@@ -1,0 +1,1 @@
+Hello, printer.  This line was sent by SBCL 2.6.10.251-57303c7aa-WIP on DOS.

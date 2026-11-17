@@ -1,0 +1,9 @@
+SBCL 2.6.10.251-57303c7aa-WIP, DOS X86
+(fib 32)               390 ms   2178309
+sieve to 300000         60 ms   25997
+mandelbrot 80x60       110 ms   214073
+digits of 1000!          0 ms   2568
+hash 20000 words       160 ms   (1000 20)
+sort 50000 conses      550 ms   66
+CLOS dispatch          110 ms   2100000
+full GC                330 ms   DONE

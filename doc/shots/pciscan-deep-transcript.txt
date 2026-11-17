@@ -1,0 +1,40 @@
+00:00.0 8086:1237 rev 02  Intel Host bridge
+  I/O memory subsystem 1AF4:1100
+00:01.0 8086:7000 rev 00  Intel ISA bridge
+  I/O memory subsystem 1AF4:1100
+00:01.1 8086:7010 rev 00  Intel IDE controller
+  I/O memory subsystem 1AF4:1100
+  BAR4  I/O ports D140h, 16 bytes
+00:01.3 8086:7113 rev 03  Intel Bridge (other)
+  I/O memory IRQ 9 (INTA) subsystem 1AF4:1100
+00:02.0 1234:1111 rev 02  QEMU/Bochs VGA controller
+  I/O memory subsystem 1AF4:1100
+  BAR0  memory FD000000h, 16M, 32-bit, prefetchable
+  BAR2  memory FEA74000h, 4K, 32-bit
+00:03.0 8086:100E rev 03  Intel Ethernet controller
+  I/O memory IRQ 11 (INTA) subsystem 1AF4:1100
+  BAR0  memory FEA40000h, 128K, 32-bit
+  BAR1  I/O ports D100h, 64 bytes
+00:04.0 1274:5000 rev 00  Ensoniq Audio device
+  I/O memory IRQ 11 (INTA) subsystem 4942:4C4C
+  BAR0  I/O ports D000h, 256 bytes
+00:05.0 1B36:0001 rev 00  Red Hat QEMU PCI-to-PCI bridge
+  I/O memory IRQ 10 (INTA) 
+  BAR0  memory FEA75000h, 256, 64-bit
+  capabilities: MSI, cap 04h, hot-plug
+  bridge to bus 01 (subordinate 01)
+  01:01.0 10EC:8139 rev 20  Realtek Ethernet controller
+    I/O memory IRQ 10 (INTA) subsystem 1AF4:1100
+    BAR0  I/O ports C000h, 256 bytes
+    BAR1  memory FE840000h, 256, 32-bit
+  01:02.0 1AF4:1005 rev 00  Red Hat virtio Unclassified
+    I/O memory IRQ 11 (INTA) subsystem 1AF4:0004
+    BAR0  I/O ports C100h, 32 bytes
+    BAR1  memory FE841000h, 4K, 32-bit
+    BAR4  memory FE000000h, 16K, 64-bit, prefetchable
+    capabilities: MSI-X, vendor-specific, vendor-specific, vendor-specific, vendor-specific, vendor-specific
+00:06.0 1033:0194 rev 03  NEC USB controller
+  I/O memory bus-master IRQ 10 (INTA) subsystem 1AF4:1100
+  BAR0  memory FEA70000h, 16K, 64-bit
+  capabilities: MSI-X, MSI
+11 PCI functions found

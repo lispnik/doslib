@@ -1,0 +1,115 @@
+# doslib
+
+Common Lisp on DOS with SBCL: a library for the BIOS, DOS, I/O ports,
+memory and video; example programs that use it; and an Emacs-like editor.
+
+It needs the DOS port of SBCL with ASDF and, for the network examples and
+nothing else, the `sb-bsd-sockets` contrib and a packet driver.
+
+## Systems
+
+`doslib.asd` defines three ASDF systems.
+
+| System | Directory | Package | What it is |
+|---|---|---|---|
+| `doslib` | `src/` | `doslib` | The library |
+| `doslib/examples` | `examples/` | `doslib-examples`, plus one package per example | Example programs |
+| `doslib/emacs` | `emacs/` | `doslib-emacs`, `doslib-emacs-user` | The editor |
+
+Tell ASDF where the project is (the launcher's `SBCLRC` does this), then
+load what you want:
+
+```lisp
+(push #p"D:/DOSLIB/" asdf:*central-registry*)
+(asdf:load-system :doslib/examples)
+```
+
+## The library
+
+```lisp
+(asdf:load-system :doslib)
+(use-package :doslib)
+(video-mode #x13)                 ; BIOS video mode 13h: 320x200, 256 colours
+(rainbow-palette)
+(dotimes (i 200) (plot i i (1+ (mod i 255))))
+(finish)                          ; wait for a key, back to text mode
+```
+
+| File | Provides |
+|---|---|
+| `machine.lisp` | `machine-code`, `int86` (software interrupts), `lo`, `hi`, `word16` |
+| `ports.lisp` | `inb`, `outb`, `inl`, `outl` |
+| `dos.lisp` | `real-int` (real-mode interrupts through DPMI), `dos-alloc`, `linear` |
+| `cpuid.lisp` | `cpuid` |
+| `memory.lisp` | `peek`, `peek16`, `peek32` |
+| `video.lisp` | `video-mode`, `set-palette`, `rainbow-palette`, `plot`, `draw-line`, `*vga*` |
+| `input.lisp` | `wait-tick`, `key-pressed-p`, `wait-key`, `finish` |
+| `init.lisp` | `doslib-init`, run at load and whenever a saved core starts |
+
+The instructions Lisp cannot express (INT, IN, OUT, CPUID) are assembled
+by hand into malloc'ed memory and called with `alien-funcall`.
+
+## The examples
+
+```lisp
+(asdf:load-system :doslib/examples)
+(doslib-examples:list-examples)             ; what there is
+(doslib-examples:menu)                      ; choose from a list
+(doslib-examples:run "fire")                ; run one
+(doslib-examples:run "wget" "http://example.com/")
+(doslib-examples:build-executable "life" "life.exe")   ; a stand-alone program
+```
+
+Each example is one file with a package of its own,
+`doslib-examples.<name>`, that exports `main`.
+
+| Category | Examples |
+|---|---|
+| `graphics/` | bmpview fire font gcviz lsystem mandel modex plasma raycast raytrace stars textfx turtle vesa wire3d |
+| `system/` | asm diskinfo dosinfo intvec ivt mcbwalk memmap pciscan ports serial sysinfo |
+| `lisp/` | bench life live shell snake special |
+| `network/` | ntp remote websrv wget |
+
+`data/` holds files the examples read; `support/` holds the host-side
+half of the serial example.
+
+To add one, write a file with a `main` function, register it with
+`doslib-examples:define-example`, and list it in `doslib.asd`.
+
+## The editor
+
+```lisp
+(asdf:load-system :doslib/emacs)
+(doslib-emacs:emacs)              ; or (doslib-emacs:emacs "file"), or (ed "file")
+(doslib-emacs:build-emacs)        ; save it as EMACS.EXE
+```
+
+`F1` lists the keys. `C-c C-z` opens the REPL, `C-x d` is Dired, and
+`C-x C-c` leaves. An error in evaluated code opens a debugger that lists
+the restarts.
+
+What you type at the REPL is read in the package `doslib-emacs-user`
+(nickname `emacs-user`), which uses Lisp, `doslib` and everything the
+editor exports. Extend the editor from there, or from `EMACSRC.LSP` in the
+current directory:
+
+```lisp
+(define-command insert-date ()
+  "Insert today's date."
+  (multiple-value-bind (s m h day month year) (get-decoded-time)
+    (declare (ignore s m h))
+    (insert (format nil "~D-~2,'0D-~2,'0D" year month day))))
+(bind-key "C-c d" 'insert-date)
+```
+
+## Running it
+
+`./run-dos.sh` starts FreeDOS in QEMU with SBCL, ASDF and this project
+installed in `D:\DOSLIB`; `./run-dos.sh utm` does the same for UTM, and
+`./run-dos.sh build` compiles everything on the DOS machine. At the DOS
+prompt, `demo` lists the examples, `demo plasma` runs one, and `emacs`
+starts the editor. The comments at the top of the script say what it
+needs: QEMU, mtools, a FreeDOS image, a packet driver, and SBCL built for
+DOS.
+
+Screenshots are in `doc/shots/`.

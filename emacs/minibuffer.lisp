@@ -1,0 +1,57 @@
+;;;; The minibuffer
+;;;;
+;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
+
+(in-package #:doslib-emacs)
+
+(defun read-string (prompt &key (initial "") complete)
+  "Read a line in the echo area.  COMPLETE, if given, is called on TAB with
+the text so far and returns the completed text and a list of candidates."
+  (let ((text initial) (hint ""))
+    (loop
+      (let ((shown (concatenate 'string prompt text)))
+        (draw-echo (concatenate 'string shown hint))
+        (set-cursor (min 79 (length shown)) 24))
+      (setf hint "")
+      (let ((key (read-key)))
+        (cond ((equal key "RET") (return text))
+              ((equal key "C-g") (error 'quit-command))
+              ((equal key "<backspace>")
+               (setf text (subseq text 0 (max 0 (1- (length text))))))
+              ((equal key "C-<backspace>") (setf text ""))
+              ((equal key "C-y") (setf text (concatenate 'string text (or (first *kill-ring*) ""))))
+              ((equal key "SPC") (setf text (concatenate 'string text " ")))
+              ((and (equal key "TAB") complete)
+               (multiple-value-bind (new candidates) (funcall complete text)
+                 (setf text new)
+                 (when (rest candidates)
+                   (setf hint (format nil "  {~{~A~^ ~}}" candidates)))))
+              ((= (length key) 1) (setf text (concatenate 'string text key))))))))
+(defun complete-from (candidates)
+  "A completion function over a list of strings."
+  (lambda (text)
+    (let ((matches (remove-if-not (lambda (c) (and (>= (length c) (length text))
+                                                   (string-equal text c :end2 (length text))))
+                                  candidates)))
+      (if (null matches)
+          (values text nil)
+          (let ((common (reduce (lambda (a b) (subseq a 0 (or (mismatch a b :test #'char-equal) (length a))))
+                                matches)))
+            (values (if (> (length common) (length text)) common text) matches))))))
+(defun complete-file (text)
+  (let* ((cut (1+ (or (position-if (lambda (c) (find c "\\/:")) text :from-end t) -1)))
+         (directory (subseq text 0 cut))
+         (names (ignore-errors
+                 (mapcar (lambda (path)
+                           (if (pathname-name path)
+                               (file-namestring path)
+                               (concatenate 'string (car (last (pathname-directory path))) "\\")))
+                         (directory (concatenate 'string directory "*.*"))))))
+    (multiple-value-bind (name matches) (funcall (complete-from names) (subseq text cut))
+      (values (concatenate 'string directory name) matches))))
+(defun ask-y-or-n (question)
+  (loop (draw-echo (concatenate 'string question " (y or n) "))
+        (let ((key (read-key)))
+          (cond ((string-equal key "y") (return t))
+                ((string-equal key "n") (return nil))
+                ((equal key "C-g") (error 'quit-command))))))

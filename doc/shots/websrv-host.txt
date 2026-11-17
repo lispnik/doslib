@@ -1,0 +1,28 @@
+$ curl -G http://127.0.0.1:8098/eval --data-urlencode 'e=(expt 2 100)'
+(expt 2 100)
+=> 1267650600228229401496703205376
+$ curl -G http://127.0.0.1:8098/eval --data-urlencode 'e=(list (software-type) (software-version) (machine-type))'
+(list (software-type) (software-version) (machine-type))
+=> ("DOS" "7.10 (HDPMI 3.23)" "X86")
+$ curl -G http://127.0.0.1:8098/eval --data-urlencode 'e=(defun fact (n) (if (< n 2) 1 (* n (fact (- n 1)))))'
+(defun fact (n) (if (< n 2) 1 (* n (fact (- n 1)))))
+=> FACT
+$ curl -G http://127.0.0.1:8098/eval --data-urlencode 'e=(fact 30)'
+(fact 30)
+=> 265252859812191058636308480000000
+$ curl -G http://127.0.0.1:8098/eval --data-urlencode 'e=(car 42)'
+(car 42)
+signalled TYPE-ERROR:
+The value
+  42
+is not of type
+  LIST
+when binding LIST
+$ curl -i http://127.0.0.1:8098/nothing
+HTTP/1.0 404 Not Found
+Server: SBCL-on-DOS
+Content-Type: text/plain
+Content-Length: 20
+Connection: close
+
+Nothing at /nothing

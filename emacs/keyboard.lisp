@@ -1,0 +1,45 @@
+;;;; The keyboard: BIOS codes -> key names like "a", "C-x", "M-f", "<up>"
+;;;;
+;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
+
+(in-package #:doslib-emacs)
+
+(defun extended-key (scan shifted)
+  (flet ((row (first letters)
+           (and (<= first scan (+ first (length letters) -1))
+                (format nil "M-~C" (char letters (- scan first))))))
+    (or (cdr (assoc scan '((#x48 . "<up>") (#x50 . "<down>") (#x4B . "<left>") (#x4D . "<right>")
+                           (#x47 . "<home>") (#x4F . "<end>") (#x49 . "<prior>") (#x51 . "<next>")
+                           (#x52 . "<insert>") (#x53 . "<delete>") (#x73 . "C-<left>")
+                           (#x74 . "C-<right>") (#x77 . "C-<home>") (#x75 . "C-<end>")
+                           (#x0F . "<backtab>") (#x03 . "C-@") (#x0E . "M-<backspace>")
+                           (#x85 . "<f11>") (#x86 . "<f12>") (#x35 . "M-/"))))
+        (and (= scan #x82) (if shifted "M-_" "M--"))
+        (and (<= #x3B scan #x44) (format nil "<f~D>" (- scan #x3A)))
+        (and (= scan #x33) (if shifted "M-<" "M-,"))
+        (and (= scan #x34) (if shifted "M->" "M-."))
+        (and (= scan #x27) (if shifted "M-:" "M-;"))
+        (and (= scan #x7C) shifted "M-%")
+        (row #x10 "qwertyuiop") (row #x1E "asdfghjkl") (row #x2C "zxcvbnm") (row #x78 "1234567890")
+        (format nil "<scan-~X>" scan))))
+(defun read-raw-key ()
+  (if *unread*
+      (pop *unread*)
+      (let* ((ax (word16 (int86 #x16 :ax #x1000))) (ascii (lo ax)) (scan (hi ax))
+             (shift (peek #x417))
+             (key (cond ((and (member ascii '(0 #xE0)) (/= scan 0)) (extended-key scan (logtest shift 3)))
+                        ((= ascii 8) (if (= scan #x0E) "<backspace>" "C-h"))
+                        ((= ascii 9) "TAB")
+                        ((= ascii 13) "RET")
+                        ((= ascii 27) "ESC")
+                        ((= ascii 127) "C-<backspace>")
+                        ((< ascii 27) (format nil "C-~C" (code-char (+ ascii 96))))
+                        ((< ascii 32) (format nil "C-~C" (code-char (+ ascii 64))))
+                        ((= ascii 32) (if (logtest shift 4) "C-SPC" "SPC"))
+                        (t (string (code-char ascii))))))
+        (when *defining-macro* (push key *macro-keys*))  ; keys from the keyboard only
+        key)))
+(defun read-key ()
+  "The next key, by name.  ESC followed by a key is Meta."
+  (let ((key (read-raw-key)))
+    (if (equal key "ESC") (concatenate 'string "M-" (read-raw-key)) key)))

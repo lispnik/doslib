@@ -1,0 +1,9 @@
+(+ 1 2)
+(list (software-type) (machine-type) (peek16 #x413))
+(defun fib (n) (if (< n 2) n (+ (fib (1- n)) (fib (- n 2)))))
+(fib 22)
+(format t "hello over the wire~%")
+(expt 2 100)
+(/ 1 0)
+(floor (sb-kernel:dynamic-usage) 1024)
+:bye

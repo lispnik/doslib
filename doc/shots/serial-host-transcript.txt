@@ -1,0 +1,23 @@
+
+SBCL 2.6.10.251-57303c7aa-WIP on DOS 7.10 (HDPMI 3.23)
+COM1> (+ 1 2)
+3
+COM1> (list (software-type) (machine-type) (peek16 #x413))
+("DOS" "X86" 639)
+COM1> (defun fib (n) (if (< n 2) n (+ (fib (1- n)) (fib (- n 2)))))
+FIB
+COM1> (fib 22)
+17711
+COM1> (format t "hello over the wire~%")
+hello over the wire
+NIL
+COM1> (expt 2 100)
+1267650600228229401496703205376
+COM1> (/ 1 0)
+ERROR (DIVISION-BY-ZERO): arithmetic error DIVISION-BY-ZERO signalled
+Operation was (/ 1 0).
+COM1> (floor (sb-kernel:dynamic-usage) 1024)
+23484
+792
+COM1> :bye
+Goodbye.

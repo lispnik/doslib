@@ -1,0 +1,389 @@
+#!/bin/sh
+# Run SBCL for DOS interactively: FreeDOS 1.4 in a QEMU window, with SBCL,
+# ASDF, the DOSLIB project (library, examples, editor) and networking.
+#
+#   ./run-dos.sh            start the machine (sets it up the first time)
+#   ./run-dos.sh setup      rebuild the disks from scratch (erases D:)
+#   ./run-dos.sh update     copy the current sbcl.exe, core, contribs and
+#                           the doslib sources onto D: again, keeping your
+#                           other files
+#   ./run-dos.sh build      compile doslib and make EMACS.EXE, by running
+#                           the machine unattended (some minutes); needed
+#                           after setup, and after update to refresh EMACS.EXE
+#   ./run-dos.sh put FILE.. copy files from here into D:\SBCL
+#   ./run-dos.sh get FILE.. copy files from D:\SBCL to the current directory
+#   ./run-dos.sh ls         list D:\SBCL
+#
+#   ./run-dos.sh utm        make vm/SBCL-DOS.utm, the same machine for the UTM
+#                           app (https://mac.getutm.app), and open it there
+#   ./run-dos.sh utm update | build | put FILE.. | get FILE.. | ls | setup
+#                           the commands above, for the UTM machine's disks
+#                           (the UTM machine has its own copies of the disks)
+#
+# (Everything but starting it needs the machine to be shut down.)
+#
+# On the DOS machine:
+#   D:\SBCL     sbcl.exe, sbcl.core, CONTRIB\ (ASDF, sb-bsd-sockets), SBCLRC
+#               (the init file: loads ASDF and tells it about D:\DOSLIB),
+#               EMACS.EXE, DEMO.BAT, DOSLIB.COR (a core with the examples
+#               loaded, for DEMO), the packet driver, WATTCP.CFG
+#   D:\DOSLIB   the doslib project: doslib.asd, src\, examples\, emacs\
+# It boots into D:\SBCL with DOSLFN (long file names), HDPMI32 (the DPMI
+# host) and a packet driver for the emulated network card loaded.
+# Ports on this computer are forwarded to the DOS machine:
+#   127.0.0.1:8098 -> 8080   (the websrv example)   change with WEB_PORT=...
+#   127.0.0.1:2323 -> 2323   (the remote example)   change with REPL_PORT=...
+#
+# In the QEMU window: Ctrl-Alt-G releases the mouse, Option is Alt.
+# To switch the machine off, type FDAPM POWEROFF at the DOS prompt (or just
+# close the window once your files are saved).
+#
+# Needs qemu-system-i386 and mtools, and two directories besides this one:
+#   SBCL_DOS_TOOLS  (default: the directory above this one) with
+#                   dl-freedos/lite/FD14LITE.img, the FreeDOS 1.4 "LiteUSB"
+#                   image, and dl-pktdrv/crynwr, the Crynwr packet drivers;
+#                   the machines' disks are kept in its vm/ directory
+#   SBCL_SRC        (default: sbcl-dos-experiment next to SBCL_DOS_TOOLS)
+#                   the SBCL source tree, built for DOS with make-dos.sh
+#                   and make-dos-contrib.sh asdf sb-bsd-sockets
+# Extra QEMU options go in RUN_DOS_QEMU_OPTIONS.
+set -e
+here=`cd "\`dirname "$0"\`" && pwd`
+tools=${SBCL_DOS_TOOLS:-`cd "$here/.." && pwd`}
+src=${SBCL_SRC:-`cd "$tools/../sbcl-dos-experiment" && pwd`}
+vm=$tools/vm
+boot=$vm/boot.img
+data=$vm/data.img
+disk_mb=256
+web_port=${WEB_PORT:-8098}
+repl_port=${REPL_PORT:-2323}
+mkdir -p "$vm"
+# "utm" as the first word: work on the UTM machine's disks instead
+utm=
+bundle=$vm/SBCL-DOS.utm
+if [ "$1" = utm ]; then
+    utm=yes; shift
+    mkdir -p "$bundle/Data"
+    boot=$bundle/Data/boot.img
+    data=$bundle/Data/data.img
+fi
+MTOOLSRC=$vm/mtoolsrc; MTOOLS_SKIP_CHECK=1; export MTOOLSRC MTOOLS_SKIP_CHECK
+printf 'drive c: file="%s" partition=1\ndrive d: file="%s" partition=1\n' "$boot" "$data" > "$MTOOLSRC"
+
+running() { pgrep -f "$data" > /dev/null 2>&1; }
+need_stopped() {
+    if running; then echo "run-dos.sh: shut the DOS machine down first" >&2; exit 1; fi
+}
+# copy a text file with DOS line endings
+put_text() {    # source, name on D:\SBCL
+    sed 's/$/\r/' "$1" > "$vm/crlf.tmp"
+    mcopy -o "$vm/crlf.tmp" "d:/SBCL/$2"
+    rm -f "$vm/crlf.tmp"
+}
+
+make_boot() {
+    cp "$tools/dl-freedos/lite/FD14LITE.img" "$boot"
+    # BUILD.BAT, when there is one, is an unattended job (see "build" below):
+    # run it, remove it, switch off.
+    printf '%s\r\n' '@echo off' 'SET DOSDIR=\FREEDOS' 'SET PATH=\FREEDOS\BIN;D:\SBCL' \
+        'SET HOME=D:\HOME' 'SET WATTCP.CFG=D:\SBCL' \
+        'DOSLFN > NUL' 'D:' 'CD \SBCL' 'HDPMI32 -r > NUL' 'PCNTPK INT=0x60 > NUL' \
+        'IF EXIST BUILD.BAT GOTO build' 'CLS' \
+        'ECHO SBCL for DOS.  Try:   sbcl    emacs    demo    demo plasma    type readme.txt' \
+        'GOTO end' ':build' 'CALL BUILD.BAT' 'DEL BUILD.BAT' 'C:' 'FDAPM POWEROFF' ':end' \
+        > "$vm/fdauto.bat"
+    mcopy -o "$vm/fdauto.bat" c:/FDAUTO.BAT
+    mdel c:/SETUP.BAT 2>/dev/null || true
+}
+make_data() {
+    cyl=`expr $disk_mb \* 2048 / 1008`
+    rm -f "$data"
+    dd if=/dev/zero of="$data" bs=1048576 count=0 seek=$disk_mb 2>/dev/null
+    mpartition -I -t $cyl -h 16 -s 63 d: 2>/dev/null
+    mpartition -c -a -t $cyl -h 16 -s 63 d: 2>/dev/null
+    mformat d:
+    mmd d:/SBCL d:/SBCL/CONTRIB d:/HOME
+}
+# The names the demos had on D:\SBCL before they became the doslib project
+old_demos="asm bench bmpview diskinfo dosinfo doslib emacs fire font gcviz intvec ivt life lifeexe
+           live lsystem mandel mcbwalk memmap modex ntp pciscan plasma ports raycast raytrace remote
+           serial shell snake special stars sysinfo textfx turtle vesa websrv wget wire3d"
+copy_files() {
+    echo "copying SBCL and the doslib project onto D:"
+    mmd -D s d:/SBCL d:/SBCL/CONTRIB d:/HOME 2>/dev/null || true
+    mcopy -o "$src/src/runtime/sbcl.exe" "$src/src/runtime/hdpmi32.exe" "$src/output/sbcl.core" d:/SBCL/
+    [ -f "$src/obj/sbcl-home/contrib/asdf.fasl" ] \
+        || { echo "run-dos.sh: ASDF is not built: run ./make-dos-contrib.sh asdf sb-bsd-sockets in $src" >&2; exit 1; }
+    mcopy -o "$src"/obj/sbcl-home/contrib/* d:/SBCL/CONTRIB/
+    mcopy -o "$tools/dl-pktdrv/crynwr/DRIVERS/CRYNWR/PCNTPK.COM" d:/SBCL/
+    printf 'my_ip = dhcp\r\n' > "$vm/wattcp.cfg"; mcopy -o "$vm/wattcp.cfg" d:/SBCL/WATTCP.CFG
+    for name in $old_demos; do
+        mdel "d:/SBCL/`echo $name | tr a-z A-Z`.LSP" 2>/dev/null || true
+    done
+    mdel d:/SBCL/PICTURE.BMP 2>/dev/null || true
+
+    # The project, afresh (so nothing stale is left, compiled files
+    # included: "build" makes those again).  Documentation gets DOS line
+    # endings.  Lisp source does not: ASDF reads it as it is, and a carriage
+    # return inside a string would be part of the string.
+    mdeltree d:/DOSLIB 2>/dev/null || true
+    stage=$vm/stage; rm -rf "$stage"; mkdir -p "$stage"
+    (cd "$here" && find . -type f ! -path './doc/*' ! -path './.git/*' ! -name '*.fasl' ! -name '.*' \
+                        ! -name run-dos.sh) | while read -r f; do
+        mkdir -p "$stage/DOSLIB/`dirname "$f"`"
+        case "$f" in
+            *.md|*.txt) sed 's/$/\r/' "$here/$f" > "$stage/DOSLIB/$f" ;;
+            *) cp "$here/$f" "$stage/DOSLIB/$f" ;;
+        esac
+    done
+    mcopy -s -o -Q "$stage/DOSLIB" d:/
+    rm -rf "$stage"
+
+    # SBCL's init file
+    cat > "$vm/text.tmp" <<'EOF'
+;;; SBCLRC -- read by SBCL when it starts (it lives next to SBCL.CORE).
+(require :asdf)
+;; Compiled files go next to their sources, not into a cache directory:
+;; DOS paths are short.
+(asdf:disable-output-translations)
+;; Projects ASDF should know about: add yours here.
+(push #p"D:/DOSLIB/" asdf:*central-registry*)
+EOF
+    put_text "$vm/text.tmp" SBCLRC
+    cat > "$vm/text.tmp" <<'EOF'
+@echo off
+REM DEMO        list the doslib examples and choose one
+REM DEMO name   run one, for example DEMO PLASMA
+REM DOSLIB.COR is a core with the examples loaded already ("build" makes it);
+REM without it they are loaded through ASDF, which takes longer.
+SET DEMOSBCL=sbcl --noinform --eval "(asdf:load-system :doslib/examples)"
+IF EXIST D:\SBCL\DOSLIB.COR SET DEMOSBCL=sbcl --core D:\SBCL\DOSLIB.COR --noinform
+IF "%1"=="" GOTO menu
+%DEMOSBCL% --eval "(doslib-examples:run '%1)" --quit
+GOTO end
+:menu
+%DEMOSBCL% --eval "(doslib-examples:menu)" --quit
+:end
+SET DEMOSBCL=
+EOF
+    put_text "$vm/text.tmp" DEMO.BAT
+    cat > "$vm/text.tmp" <<EOF
+SBCL for DOS
+============
+sbcl                the Lisp prompt, with ASDF loaded; (sb-ext:exit) leaves
+demo                list the examples and choose one
+demo plasma         run one example (any key usually ends it)
+emacs [file]        the editor: F1 lists keys, C-c C-z is the REPL, C-x d is
+                    Dired, C-x C-c leaves
+
+The doslib project is in D:\\DOSLIB (doslib.asd).  At the Lisp prompt:
+  (asdf:load-system :doslib)             the library
+  (asdf:load-system :doslib/examples)    then (doslib-examples:menu)
+                                         or   (doslib-examples:run "fire")
+  (asdf:load-system :doslib/emacs)       then (doslib-emacs:emacs)
+
+Network examples (the packet driver is loaded at boot):
+  (doslib-examples:run "wget" "http://example.com/")
+  (doslib-examples:run "websrv")   host: open http://127.0.0.1:$web_port/
+  (doslib-examples:run "remote")   host: nc 127.0.0.1 $repl_port
+  (doslib-examples:run "ntp")
+
+Your own systems: put them in a directory, add it to D:\\SBCL\\SBCLRC.
+
+FDAPM POWEROFF switches the machine off.
+EOF
+    put_text "$vm/text.tmp" README.TXT; rm -f "$vm/text.tmp"
+}
+
+# Compile the project and make EMACS.EXE, on the DOS machine itself: boot
+# it without a window to run BUILD.BAT, which FDAUTO.BAT looks for.
+build() {
+    cat > "$vm/text.tmp" <<'EOF'
+@echo off
+SET SBCL_DOS_MERGE_STDERR=1
+sbcl --noinform --non-interactive --eval "(asdf:load-system :doslib/examples)" > BUILD.LOG
+IF EXIST DOSLIB.COR DEL DOSLIB.COR
+sbcl --noinform --non-interactive --eval "(asdf:load-system :doslib/examples)" --eval "(doslib-examples:save-core)" >> BUILD.LOG
+IF EXIST EMACS.EXE DEL EMACS.EXE
+sbcl --noinform --non-interactive --eval "(asdf:load-system :doslib/emacs)" --eval "(doslib-emacs:build-emacs)" >> BUILD.LOG
+EOF
+    put_text "$vm/text.tmp" BUILD.BAT; rm -f "$vm/text.tmp"
+    mdel d:/SBCL/BUILD.LOG 2>/dev/null || true
+    echo "building doslib on the DOS machine (this takes some minutes)"
+    # (with the network card: the packet driver in FDAUTO.BAT waits for one)
+    qemu-system-i386 -m 512 -cpu pentium3 -display none -no-reboot -nic user,model=pcnet \
+        -drive file="$boot",format=raw,if=ide,index=0 \
+        -drive file="$data",format=raw,if=ide,index=1 > /dev/null 2>&1 &
+    qemu=$!
+    waited=0
+    while kill -0 $qemu 2>/dev/null; do
+        if [ $waited -ge ${BUILD_TIMEOUT:-3600} ]; then
+            echo "run-dos.sh: the build did not finish; stopping it" >&2
+            kill -9 $qemu 2>/dev/null; break
+        fi
+        sleep 2; waited=`expr $waited + 2`
+    done
+    wait $qemu 2>/dev/null || true
+    mdel d:/SBCL/BUILD.BAT 2>/dev/null || true
+    mtype d:/SBCL/BUILD.LOG 2>/dev/null | tr -d '\r' > "$vm/build.log" || true
+    if mdir d:/SBCL/EMACS.EXE > /dev/null 2>&1 && mdir d:/SBCL/DOSLIB.COR > /dev/null 2>&1 && ! grep -q 'Unhandled\|debugger invoked\|COMPILE-FILE-ERROR' "$vm/build.log"; then
+        echo "built: the examples are compiled, DOSLIB.COR and EMACS.EXE are made (log: $vm/build.log)"
+    else
+        tail -30 "$vm/build.log"
+        echo "run-dos.sh: the build failed; the whole log is $vm/build.log" >&2
+        exit 1
+    fi
+}
+
+# The description of the machine that UTM reads.  Written once, so that the
+# machine keeps its identity in UTM.
+make_utm_config() {
+    [ -f "$bundle/config.plist" ] && return
+    cat > "$bundle/config.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Backend</key><string>QEMU</string>
+  <key>ConfigurationVersion</key><integer>4</integer>
+  <key>Information</key>
+  <dict>
+    <key>Name</key><string>SBCL on FreeDOS</string>
+    <key>UUID</key><string>`uuidgen`</string>
+    <key>Icon</key><string>msdos</string>
+    <key>IconCustom</key><false/>
+    <key>Notes</key><string>SBCL for DOS: type sbcl, emacs, or type readme.txt.  Host port $web_port goes to the web server demo (8080), $repl_port to the remote REPL demo (2323).  Made by run-dos.sh.</string>
+  </dict>
+  <key>System</key>
+  <dict>
+    <key>Architecture</key><string>i386</string>
+    <key>Target</key><string>pc</string>
+    <key>CPU</key><string>pentium3</string>
+    <key>CPUCount</key><integer>1</integer>
+    <key>CPUFlagsAdd</key><array/>
+    <key>CPUFlagsRemove</key><array/>
+    <key>ForceMulticore</key><false/>
+    <key>JITCacheSize</key><integer>0</integer>
+    <key>MemorySize</key><integer>512</integer>
+  </dict>
+  <key>QEMU</key>
+  <dict>
+    <key>AdditionalArguments</key><array/>
+    <key>BalloonDevice</key><false/>
+    <key>DebugLog</key><false/>
+    <key>Hypervisor</key><false/>
+    <key>PS2Controller</key><true/>
+    <key>RNGDevice</key><false/>
+    <key>RTCLocalTime</key><false/>
+    <key>TPMDevice</key><false/>
+    <key>TSO</key><false/>
+    <key>UEFIBoot</key><false/>
+  </dict>
+  <key>Input</key>
+  <dict>
+    <key>MaximumUsbShare</key><integer>3</integer>
+    <key>UsbBusSupport</key><string>Disabled</string>
+    <key>UsbSharing</key><false/>
+  </dict>
+  <key>Sharing</key>
+  <dict>
+    <key>ClipboardSharing</key><false/>
+    <key>DirectoryShareMode</key><string>None</string>
+    <key>DirectoryShareReadOnly</key><false/>
+  </dict>
+  <key>Display</key>
+  <array>
+    <dict>
+      <key>Hardware</key><string>VGA</string>
+      <key>DynamicResolution</key><false/>
+      <key>NativeResolution</key><false/>
+      <key>DownscalingFilter</key><string>Linear</string>
+      <key>UpscalingFilter</key><string>Nearest</string>
+    </dict>
+  </array>
+  <key>Drive</key>
+  <array>
+    <dict>
+      <key>Identifier</key><string>`uuidgen`</string>
+      <key>ImageName</key><string>boot.img</string>
+      <key>ImageType</key><string>Disk</string>
+      <key>Interface</key><string>IDE</string>
+      <key>InterfaceVersion</key><integer>1</integer>
+      <key>ReadOnly</key><false/>
+    </dict>
+    <dict>
+      <key>Identifier</key><string>`uuidgen`</string>
+      <key>ImageName</key><string>data.img</string>
+      <key>ImageType</key><string>Disk</string>
+      <key>Interface</key><string>IDE</string>
+      <key>InterfaceVersion</key><integer>1</integer>
+      <key>ReadOnly</key><false/>
+    </dict>
+  </array>
+  <key>Network</key>
+  <array>
+    <dict>
+      <key>Hardware</key><string>pcnet</string>
+      <key>Mode</key><string>Emulated</string>
+      <key>MacAddress</key><string>52:54:00:5B:C1:D0</string>
+      <key>IsolateFromHost</key><false/>
+      <key>PortForward</key>
+      <array>
+        <dict>
+          <key>Protocol</key><string>TCP</string>
+          <key>HostAddress</key><string>127.0.0.1</string>
+          <key>HostPort</key><integer>$web_port</integer>
+          <key>GuestPort</key><integer>8080</integer>
+        </dict>
+        <dict>
+          <key>Protocol</key><string>TCP</string>
+          <key>HostAddress</key><string>127.0.0.1</string>
+          <key>HostPort</key><integer>$repl_port</integer>
+          <key>GuestPort</key><integer>2323</integer>
+        </dict>
+      </array>
+    </dict>
+  </array>
+  <key>Serial</key><array/>
+  <key>Sound</key><array/>
+</dict>
+</plist>
+EOF
+}
+
+command=${1:-run}
+if [ -n "$utm" ] && [ "$command" = run ]; then command=utm-open; fi
+case "$command" in
+    utm-open)
+        if [ ! -f "$boot" ] || [ ! -f "$data" ]; then make_boot; make_data; copy_files; build; fi
+        make_utm_config
+        echo "opening $bundle in UTM; press its play button to start the machine"
+        open "$bundle" ;;
+    setup)
+        need_stopped; make_boot; make_data; copy_files
+        echo "now run:  $0 ${utm:+utm }build" ;;
+    build)
+        need_stopped; [ -f "$data" ] || { echo "run-dos.sh: nothing set up yet" >&2; exit 1; }
+        build ;;
+    update)
+        need_stopped; [ -f "$data" ] || { echo "run-dos.sh: nothing set up yet" >&2; exit 1; }
+        make_boot; copy_files ;;
+    put)
+        need_stopped; shift
+        for f in "$@"; do mcopy -o "$f" d:/SBCL/; done ;;
+    get)
+        need_stopped; shift
+        for f in "$@"; do mcopy -n -o "d:/SBCL/$f" .; done ;;
+    ls)
+        need_stopped; mdir d:/SBCL ;;
+    run)
+        if running; then echo "run-dos.sh: the DOS machine is already running" >&2; exit 1; fi
+        if [ ! -f "$boot" ] || [ ! -f "$data" ]; then make_boot; make_data; copy_files; build; fi
+        exec qemu-system-i386 -m 512 -cpu pentium3 -name "SBCL on FreeDOS" \
+            -drive file="$boot",format=raw,if=ide,index=0 \
+            -drive file="$data",format=raw,if=ide,index=1 \
+            -nic user,model=pcnet,hostfwd=tcp:127.0.0.1:$web_port-:8080,hostfwd=tcp:127.0.0.1:$repl_port-:2323 \
+            $RUN_DOS_QEMU_OPTIONS ;;
+    *)
+        sed -n "2,49p" "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

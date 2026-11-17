@@ -1,0 +1,48 @@
+$ nc 127.0.0.1 2323
+SBCL 2.6.10.251-57303c7aa-WIP on DOS, frame 18.
+(PIXEL x y time) paints the screen; redefine it.
+DOS> (list (software-type) (software-version) *frames*)
+("DOS" "7.10 (HDPMI 3.23)" 47)
+DOS> (defun pixel (x y time) (logxor (+ x time) y))
+
+WARNING: redefining COMMON-LISP-USER::PIXEL in DEFUN
+PIXEL
+DOS> (defun pixel (x y time)
+  (let ((dx (- x 40)) (dy (- y 24)))
+    (- (ash (+ (* dx dx) (* dy dy)) -1) (* 6 time))))
+
+WARNING: redefining COMMON-LISP-USER::PIXEL in DEFUN
+PIXEL
+DOS> (defun pixel (x y time) (/ x (- y y)))
+; in: DEFUN PIXEL
+;     (SB-INT:NAMED-LAMBDA PIXEL
+;         (X Y TIME)
+;       (BLOCK PIXEL (/ X (- Y Y))))
+; ==>
+;   #'(SB-INT:NAMED-LAMBDA PIXEL
+;         (X Y TIME)
+;       (BLOCK PIXEL (/ X (- Y Y))))
+; 
+; caught STYLE-WARNING:
+;   The variable TIME is defined but never used.
+; 
+; compilation unit finished
+;   caught 1 STYLE-WARNING condition
+WARNING: redefining COMMON-LISP-USER::PIXEL in DEFUN
+PIXEL
+DOS> 
+PIXEL failed (DIVISION-BY-ZERO: arithmetic error DIVISION-BY-ZERO signalledOperation was (/ 0 0).)
+going back to the previous definition.
+DOS> (dotimes (i 255) (set-palette i (min 63 (ash i -1)) (min 63 (ash i -2)) (if (> i 128) (ash (- i 128) -1) 0)))
+NIL
+DOS> (defun pixel (x y time)
+  (if (< (abs (- y 24 (* 14 (sin (/ (+ x (* 3 time)) 8.0))))) 4) 200 (mod (+ x y) 60)))
+
+WARNING: redefining COMMON-LISP-USER::PIXEL in DEFUN
+PIXEL
+DOS> *frames*
+10666
+DOS> (quit-demo)
+:BYE
+DOS> 
+The demo has ended.
