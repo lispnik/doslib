@@ -22,8 +22,11 @@
 (defstruct page url (lines '()) (links '()))   ; lines: (colour . text); links: urls, in order
 
 ;;; ---- fetching
+(defparameter *patience* 30 "Seconds to wait for a server that has gone quiet.")
 (defun fetch (host port request)
-  "Send REQUEST to HOST and return everything that comes back, as a string."
+  "Send REQUEST to HOST and return everything that comes back, as a string.
+A server that says nothing for *PATIENCE* seconds is given up on; Esc gives
+up at once."
   (let ((socket (make-instance 'inet-socket :type :stream :protocol :tcp)))
     (unwind-protect
          (progn
@@ -32,15 +35,27 @@
                                (make-inet-address host)
                                (host-ent-address (get-host-by-name host)))
                            port)
-           (let ((stream (socket-make-stream socket :input t :output t :external-format :latin-1
+           (let ((stream (socket-make-stream socket :output t :external-format :latin-1
                                                     :buffering :full)))
              (write-string request stream)
-             (finish-output stream)
+             (finish-output stream))
+           ;; Read from the socket itself, and only when it has something: a
+           ;; read from a stream would wait for ever on a server that never
+           ;; answers, and there is only this one thread.
+           (let ((buffer (make-array 4096 :element-type '(unsigned-byte 8)))
+                 (quiet-since (get-internal-real-time)))
              (with-output-to-string (out)
-               (let ((buffer (make-string 4096)))
-                 (loop for n = (read-sequence buffer stream)
-                       do (write-string buffer out :end n)
-                       while (= n (length buffer)))))))
+               (loop
+                 (cond ((sb-unix:unix-simple-poll (socket-file-descriptor socket) :input 250)
+                        (let ((n (nth-value 1 (socket-receive socket buffer nil))))
+                          (when (or (null n) (<= n 0)) (return))
+                          (dotimes (i n) (write-char (code-char (aref buffer i)) out))
+                          (setf quiet-since (get-internal-real-time))))
+                       ((and (key-pressed-p) (eql (get-key) (code-char 27)))
+                        (error "Stopped: you pressed Esc."))
+                       ((> (- (get-internal-real-time) quiet-since)
+                           (* *patience* internal-time-units-per-second))
+                        (error "The server has said nothing for ~D seconds." *patience*)))))))
       (ignore-errors (socket-close socket)))))
 
 (defun scheme-end (url)

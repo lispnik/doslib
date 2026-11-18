@@ -12,24 +12,40 @@
 (in-package #:doslib)
 
 (defun text-wrap (text width)
-  "TEXT as a list of lines no longer than WIDTH, broken at spaces."
-  (let ((lines '()) (line ""))
+  "TEXT as a list of lines no longer than WIDTH, broken at spaces.  A
+paragraph that starts with spaces keeps them, on every line it becomes; a
+word too long for any line is cut where the line ends."
+  (let ((lines '()))
     (dolist (paragraph (loop with start = 0
                              for newline = (position #\Newline text :start start)
                              collect (subseq text start newline)
                              while newline do (setf start (1+ newline))))
-      (dolist (word (loop with start = 0
-                          for space = (position #\Space paragraph :start start)
-                          collect (subseq paragraph start space)
-                          while space do (setf start (1+ space))))
-        (cond ((string= word ""))
-              ((string= line "") (setf line word))
-              ((<= (+ (length line) 1 (length word)) width)
-               (setf line (concatenate 'string line " " word)))
-              (t (push line lines) (setf line word)))
-        (loop while (> (length line) width)       ; a word longer than a line
-              do (push (subseq line 0 width) lines) (setf line (subseq line width))))
-      (push line lines) (setf line ""))
+      (let* ((indent (make-string (min (max 0 (1- width))
+                                       (or (position #\Space paragraph :test-not #'char=)
+                                           (length paragraph)))
+                                  :initial-element #\Space))
+             (room (- width (length indent)))
+             (line indent))
+        (flet ((empty-p () (= (length line) (length indent)))
+               (new-line () (push line lines) (setf line indent)))
+          (dolist (word (loop with start = 0
+                              for space = (position #\Space paragraph :start start)
+                              collect (subseq paragraph start space)
+                              while space do (setf start (1+ space))))
+            (loop until (string= word "")
+                  do (let ((gap (if (empty-p) 0 1)))
+                       (cond ((<= (+ (length line) gap (length word)) width)
+                              (setf line (concatenate 'string line (if (empty-p) "" " ") word)
+                                    word ""))
+                             ((> (length word) room)   ; it will never fit: fill this line with it
+                              (let ((space (- width (length line) gap)))
+                                (when (plusp space)
+                                  (setf line (concatenate 'string line (if (empty-p) "" " ")
+                                                          (subseq word 0 space))
+                                        word (subseq word space))))
+                              (new-line))
+                             (t (new-line))))))
+          (push (if (empty-p) "" line) lines))))
     (or (nreverse (member "" lines :test-not #'string=)) (list ""))))
 
 (defvar *dialog-line* nil "Where DIALOG-ASK asks: (x y width), while a dialog is up.")
