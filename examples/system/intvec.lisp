@@ -19,18 +19,6 @@
   (:export #:main))
 (in-package #:doslib-examples.intvec)
 
-(defvar *get-cs* (machine-code #x8C #xC8 #xC3))
-         ; mov eax,cs / ret
-(defvar *get-ds* (machine-code #x8C #xD8 #xC3))
-         ; mov eax,ds / ret
-(defun selector (stub) (alien-funcall (sap-alien stub (function unsigned))))
-(defun bytes32 (x) (loop for i below 4 collect (ldb (byte 8 (* 8 i)) x)))
-(defun get-vector (n)                   ; DPMI 0204h -> selector, offset
-  (multiple-value-bind (ax bx cx dx) (int86 #x31 :ax #x0204 :bx n)
-    (declare (ignore ax bx))
-    (values (word16 cx) dx)))
-(defun set-vector (n selector offset)   ; DPMI 0205h
-  (int86 #x31 :ax #x0205 :bx n :cx selector :dx offset))
 ;;; ---- part 1: the handler, in Lisp
 (defun nth-prime (n)
   (loop with found = 0 for k from 2
@@ -66,7 +54,7 @@
 (defun demo ()
   (multiple-value-bind (old-selector old-offset) (get-vector #x60)
     (format t "~&INT 60h was ~4,'0X:~8,'0X~%" old-selector old-offset)
-    (set-vector #x60 (selector *get-cs*) (sap-int *int60*))
+    (set-vector #x60 (code-selector) (sap-int *int60*))
     (multiple-value-bind (s o) (get-vector #x60)
       (format t "INT 60h is now ~4,'0X:~8,'0X, glue for #'SERVICE~%" s o))
     (format t "From Lisp, with INT86:~%")
@@ -81,7 +69,7 @@
 
   ;; ---- part 2: the timer tick
   (let* ((counter (alien-sap (make-alien (unsigned 32) 1)))
-         (ds (selector *get-ds*)))
+         (ds (data-selector)))
     (setf (sap-ref-32 counter 0) 0)
     (multiple-value-bind (old-selector old-offset) (get-vector #x1C)
       (let ((isr (apply #'machine-code
@@ -91,7 +79,7 @@
                           #xEA ,@(bytes32 old-offset) ,(lo old-selector) ,(hi old-selector)))))
         (format t "Timer tick (INT 1Ch) hooked at ~8,'0X; counting for 2 seconds...~%"
                 (sap-int isr))
-        (set-vector #x1C (selector *get-cs*) (sap-int isr))
+        (set-vector #x1C (code-selector) (sap-int isr))
         (let ((sum 0d0))                ; Lisp is busy; the ticks arrive anyway
           (loop with start = (get-internal-real-time)
                 until (>= (- (get-internal-real-time) start)

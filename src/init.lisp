@@ -19,6 +19,11 @@
   (setf *cpuid* (machine-code #x53 #x57 #x8B #x44 #x24 12 #x8B #x7C #x24 16
           #x0F #xA2 #x89 #x07 #x89 #x5F 4 #x89 #x4F 8
           #x89 #x57 12 #x5F #x5B #xC3))
+  (setf *get-cs* (machine-code #x8C #xC8 #xC3)
+        *get-ds* (machine-code #x8C #xD8 #xC3))
+  (setf *hotkey-old-vector* nil)        ; a new process: nothing is hooked
+  (clrhash *hotkey-functions*)
   t)
 (doslib-init)
 (pushnew 'doslib-init sb-ext:*init-hooks*)
+(pushnew 'remove-hotkeys sb-ext:*exit-hooks*)   ; leave the keyboard as we found it

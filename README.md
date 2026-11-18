@@ -42,6 +42,8 @@ load what you want:
 | `dos.lisp` | `real-int` (real-mode interrupts through DPMI), `dos-alloc`, `linear` |
 | `cpuid.lisp` | `cpuid` |
 | `memory.lisp` | `peek`, `peek16`, `peek32` |
+| `interrupts.lisp` | `get-vector`, `set-vector`, `code-selector`, `data-selector` |
+| `hotkey.lisp` | `install-hotkey`, `remove-hotkeys`, `poll-hotkeys`: keys taken from the keyboard interrupt |
 | `video.lisp` | `video-mode`, `set-palette`, `rainbow-palette`, `plot`, `draw-line`, `*vga*` |
 | `input.lisp` | `wait-tick`, `key-pressed-p`, `wait-key`, `finish` |
 | `init.lisp` | `doslib-init`, run at load and whenever a saved core starts |
@@ -65,8 +67,8 @@ Each example is one file with a package of its own,
 
 | Category | Examples |
 |---|---|
-| `graphics/` | bmpview fire font gcviz lsystem mandel modex plasma raycast raytrace stars textfx turtle vesa wire3d |
-| `system/` | asm diskinfo dosinfo intvec ivt mcbwalk memmap pciscan ports serial sysinfo |
+| `graphics/` | bmpview fire font gcviz lsystem mandel modex paint plasma raycast raytrace stars textfx turtle vesa wire3d |
+| `system/` | asm calc diskinfo dosinfo intvec ivt mcbwalk memmap pciscan ports serial sysinfo |
 | `lisp/` | bench life live shell snake special |
 | `network/` | ntp remote websrv wget |
 

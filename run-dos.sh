@@ -30,7 +30,8 @@
 #               WATTCP.CFG
 #   D:\DOSLIB   the doslib project: doslib.asd, src\, examples\, emacs\
 # It boots into D:\SBCL with DOSLFN (long file names), HDPMI32 (the DPMI
-# host) and a packet driver for the emulated network card loaded.
+# host), a packet driver for the emulated network card and the CTMOUSE
+# mouse driver loaded.
 # Ports on this computer are forwarded to the DOS machine:
 #   127.0.0.1:8098 -> 8080   (the websrv example)   change with WEB_PORT=...
 #   127.0.0.1:2323 -> 2323   (the remote example)   change with REPL_PORT=...
@@ -71,6 +72,10 @@ if [ "$1" = utm ]; then
     data=$bundle/Data/data.img
 fi
 MTOOLSRC=$vm/mtoolsrc; MTOOLS_SKIP_CHECK=1; export MTOOLSRC MTOOLS_SKIP_CHECK
+# The DOS machine's clock runs in UTC, and file times on its disks should
+# agree with it: otherwise a source file copied in looks hours older than
+# it is, and ASDF does not compile it again.
+TZ=UTC; export TZ
 printf 'drive c: file="%s" partition=1\ndrive d: file="%s" partition=1\n' "$boot" "$data" > "$MTOOLSRC"
 
 running() { pgrep -f "$data" > /dev/null 2>&1; }
@@ -91,6 +96,7 @@ make_boot() {
     printf '%s\r\n' '@echo off' 'SET DOSDIR=\FREEDOS' 'SET PATH=\FREEDOS\BIN;D:\SBCL' \
         'SET HOME=D:\HOME' 'SET WATTCP.CFG=D:\SBCL' \
         'DOSLFN > NUL' 'D:' 'CD \SBCL' 'HDPMI32 -r > NUL' 'PCNTPK INT=0x60 > NUL' \
+        'IF EXIST CTMOUSE.EXE CTMOUSE > NUL' \
         'IF EXIST BUILD.BAT GOTO build' 'CLS' \
         'ECHO SBCL for DOS.  Try:   sbcl    emacs    demo    demo plasma    type readme.txt' \
         'GOTO end' ':build' 'CALL BUILD.BAT' 'DEL BUILD.BAT' 'C:' 'FDAPM POWEROFF' ':end' \
@@ -120,6 +126,11 @@ copy_files() {
     mcopy -o "$src"/obj/sbcl-home/contrib/* d:/SBCL/CONTRIB/
     mcopy -o "$tools/dl-pktdrv/crynwr/DRIVERS/CRYNWR/PCNTPK.COM" d:/SBCL/
     printf 'my_ip = dhcp\r\n' > "$vm/wattcp.cfg"; mcopy -o "$vm/wattcp.cfg" d:/SBCL/WATTCP.CFG
+    # The mouse driver: FreeDOS's CTMOUSE, from the package on its install image
+    if command -v unzip > /dev/null && mcopy -n -o c:/packages/base/ctmouse.zip "$vm/ctmouse.zip" 2>/dev/null; then
+        unzip -o -q -j "$vm/ctmouse.zip" BIN/CTMOUSE.EXE -d "$vm" && mcopy -o "$vm/CTMOUSE.EXE" d:/SBCL/
+        rm -f "$vm/ctmouse.zip" "$vm/CTMOUSE.EXE"
+    fi
     for name in $old_demos; do
         mdel "d:/SBCL/`echo $name | tr a-z A-Z`.LSP" 2>/dev/null || true
     done
@@ -411,5 +422,5 @@ case "$command" in
             -nic user,model=pcnet,hostfwd=tcp:127.0.0.1:$web_port-:8080,hostfwd=tcp:127.0.0.1:$repl_port-:2323 \
             $RUN_DOS_QEMU_OPTIONS ;;
     *)
-        sed -n "2,52p" "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+        sed -n "2,53p" "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

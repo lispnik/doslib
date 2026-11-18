@@ -13,4 +13,7 @@ ALIEN-FUNCALL.")
           #:outl #:*rm* #:real-int #:dos-alloc #:linear #:*cpuid* #:cpuid
           #:peek #:peek16 #:peek32 #:*vga* #:video-mode #:set-palette
           #:rainbow-palette #:plot #:draw-line #:wait-tick #:key-pressed-p
-          #:wait-key #:finish #:doslib-init))
+          #:wait-key #:finish #:doslib-init
+          #:code-selector #:data-selector #:bytes32 #:get-vector #:set-vector
+          #:install-hotkey #:remove-hotkey #:remove-hotkeys #:poll-hotkeys
+          #:hotkeys-installed-p #:hotkey-pending-p #:clear-pending-hotkeys))
