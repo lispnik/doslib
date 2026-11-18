@@ -23,6 +23,7 @@
            ("<f4>" end-or-call-macro) ("C-x e" call-macro) ("C-q" quoted-insert)
            ("C-s" isearch-forward) ("C-r" isearch-backward) ("M-%" replace-string)
            ("C-x C-f" find-file) ("C-x C-s" save-buffer) ("<f2>" save-buffer) ("C-x C-w" write-file)
+           ("C-x RET f" toggle-line-endings)
            ("C-x b" switch-to-buffer) ("C-x k" kill-buffer) ("C-x C-b" list-buffers)
            ("C-x 2" split-window) ("C-x 1" delete-other-windows) ("C-x o" other-window)
            ("C-x C-e" eval-last-sexp) ("C-c C-c" eval-defun) ("C-c C-b" eval-buffer)

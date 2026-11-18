@@ -118,9 +118,11 @@
                   (when (and (plusp h) (plusp v)) (cell h 36 #x70))
                   (when (> v (+ h 80)) (cell (+ h 79) 36 #x70))))))))
     (put-string 0 (+ (win-row w) height)
-                (format nil " ~A ~20A L~D C~D  (~A~:[~; Def~])~@[  ~A~]"
+                (format nil " ~A ~20A L~D C~D  (~A~:[~; Def~])~@[  ~A~]~@[  ~A~]"
                         (if (buf-modified b) "**" "--") (buf-name b) (1+ line) col
-                        (mode-name (buf-mode b)) (and current *defining-macro*) (buf-file b))
+                        (mode-name (buf-mode b)) (and current *defining-macro*)
+                        (and (buf-file b) (if (buf-crlf b) "CRLF" "LF"))   ; its line endings
+                        (buf-file b))
                 (if current #x70 #x17) 80)))
 (defun draw-echo (&optional (text (or *message* "")))
   (put-string 0 24 (subseq text (max 0 (- (length text) 79))) 7 80))

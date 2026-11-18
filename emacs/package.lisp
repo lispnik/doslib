@@ -67,7 +67,7 @@
           #:repl-prompt #:repl-prompt-line #:repl-input #:repl-return
           #:repl-history #:repl-previous-input #:repl-next-input
           #:repl-beginning-of-line #:select-buffer #:mode-for-file
-          #:find-file-buffer #:visit #:find-file #:write-buffer #:save-buffer
+          #:find-file-buffer #:visit #:find-file #:default-crlf #:name-buffer #:toggle-line-endings #:write-buffer #:save-buffer
           #:write-file #:load-file #:switch-to-buffer #:kill-buffer
           #:show-in-help #:list-buffers #:dentry #:dentry-name #:dentry-dir
           #:dentry-size #:dentry-time #:dentry-flag #:dentry-p
