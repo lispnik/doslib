@@ -35,3 +35,19 @@
 (defun lo (x) (logand x #xFF))
 (defun hi (x) (logand (ash x -8) #xFF))
 (defun word16 (x) (logand x #xFFFF))
+
+;;; Memory outside the Lisp heap -- machine code from MACHINE-CODE, DOS
+;;; memory -- belongs to the process, not to the Lisp image: a core saved
+;;; with SAVE-LISP-AND-DIE does not contain it, and an address kept in a
+;;; variable is stale when that core starts.  Code that should work from a
+;;; saved core is kept as its bytes, and put into memory again in each new
+;;; process, when it is first wanted there.
+(defvar *session* 0 "Which process of this image we are in: DOSLIB-INIT counts them.")
+(defstruct (saved-code (:constructor saved-code (bytes)))
+  bytes address (session -1))
+(defun code-address (saved-code)
+  "Where SAVED-CODE is in memory, in this process."
+  (unless (= (saved-code-session saved-code) *session*)
+    (setf (saved-code-address saved-code) (apply #'machine-code (saved-code-bytes saved-code))
+          (saved-code-session saved-code) *session*))
+  (saved-code-address saved-code))

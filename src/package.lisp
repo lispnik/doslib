@@ -16,4 +16,10 @@ ALIEN-FUNCALL.")
           #:wait-key #:finish #:doslib-init
           #:code-selector #:data-selector #:bytes32 #:get-vector #:set-vector
           #:install-hotkey #:remove-hotkey #:remove-hotkeys #:poll-hotkeys
-          #:hotkeys-installed-p #:hotkey-pending-p #:clear-pending-hotkeys))
+          #:hotkeys-installed-p #:hotkey-pending-p #:clear-pending-hotkeys
+          #:*text-screen* #:text-put #:text-fill #:text-box #:text-cursor
+          #:hide-text-cursor #:show-text-cursor #:save-text-screen
+          #:restore-text-screen #:get-key #:text-input
+          #:catch-critical-errors #:release-critical-errors #:critical-error
+          #:text-wrap #:restart-dialog #:dialog-ask
+          #:*session* #:saved-code #:code-address))

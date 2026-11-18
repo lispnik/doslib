@@ -19,6 +19,9 @@
                (:file "hotkey")
                (:file "video")
                (:file "input")
+               (:file "text")
+               (:file "critical")
+               (:file "dialog")
                (:file "init")))
 
 (defsystem "doslib/examples"
@@ -48,6 +51,7 @@
                (:module "system"
                 :depends-on ("package")
                 :components ((:file "asm")
+                             (:file "asmdsl")
                              (:file "calc")
                              (:file "diskinfo")
                              (:file "dosinfo")
@@ -62,14 +66,22 @@
                (:module "lisp"
                 :depends-on ("package")
                 :components ((:file "bench")
+                             (:file "hotfix")
                              (:file "life")
                              (:file "live")
+                             (:file "restarts")
+                             (:file "resume")
                              (:file "shell")
                              (:file "snake")
-                             (:file "special")))
+                             (:file "special")
+                             (:file "windows")))
                (:module "network"
                 :depends-on ("package")
-                :components ((:file "ntp")
+                :components ((:file "browse")
+                             (:file "files")
+                             (:file "irc")
+                             (:file "netpong")
+                             (:file "ntp")
                              (:file "remote")
                              (:file "websrv")
                              (:file "wget")))))

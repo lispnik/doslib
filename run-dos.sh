@@ -7,7 +7,8 @@
 #   ./run-dos.sh update     copy the current sbcl.exe, core, contribs and
 #                           the doslib sources onto D: again, keeping your
 #                           other files
-#   ./run-dos.sh build      compile doslib and make EMACS.EXE, by running
+#   ./run-dos.sh build      put ASDF into SBCL.CORE, compile doslib and make
+#                           EMACS.EXE and DOSLIB.COR, by running
 #                           the machine unattended (some minutes); needed
 #                           after setup, and after update to refresh EMACS.EXE
 #   ./run-dos.sh put FILE.. copy files from here into D:\SBCL
@@ -29,9 +30,10 @@
 #               loaded, for DEMO), QL.BAT (Quicklisp), the packet driver,
 #               WATTCP.CFG
 #   D:\DOSLIB   the doslib project: doslib.asd, src\, examples\, emacs\
-# It boots into D:\SBCL with DOSLFN (long file names), HDPMI32 (the DPMI
-# host), a packet driver for the emulated network card and the CTMOUSE
-# mouse driver loaded.
+# It boots into D:\SBCL with LBACACHE (a disk cache: the 26 MB Lisp core is
+# read from disk once, not at every start), DOSLFN (long file names),
+# HDPMI32 (the DPMI host), a packet driver for the emulated network card
+# and the CTMOUSE mouse driver loaded.
 # Ports on this computer are forwarded to the DOS machine:
 #   127.0.0.1:8098 -> 8080   (the websrv example)   change with WEB_PORT=...
 #   127.0.0.1:2323 -> 2323   (the remote example)   change with REPL_PORT=...
@@ -95,6 +97,7 @@ make_boot() {
     # run it, remove it, switch off.
     printf '%s\r\n' '@echo off' 'SET DOSDIR=\FREEDOS' 'SET PATH=\FREEDOS\BIN;D:\SBCL' \
         'SET HOME=D:\HOME' 'SET WATTCP.CFG=D:\SBCL' \
+        'LBACACHE BUF 40000 > NUL' \
         'DOSLFN > NUL' 'D:' 'CD \SBCL' 'HDPMI32 -r > NUL' 'PCNTPK INT=0x60 > NUL' \
         'IF EXIST CTMOUSE.EXE CTMOUSE > NUL' \
         'IF EXIST BUILD.BAT GOTO build' 'CLS' \
@@ -156,12 +159,14 @@ copy_files() {
     # SBCL's init file
     cat > "$vm/text.tmp" <<'EOF'
 ;;; SBCLRC -- read by SBCL when it starts (it lives next to SBCL.CORE).
+;; ("build" saves SBCL.CORE again with ASDF already in it, so this costs
+;; nothing after that.)
 (require :asdf)
 ;; Compiled files go next to their sources, not into a cache directory:
 ;; DOS paths are short.
 (asdf:disable-output-translations)
 ;; Projects ASDF should know about: add yours here.
-(push #p"D:/DOSLIB/" asdf:*central-registry*)
+(pushnew #p"D:/DOSLIB/" asdf:*central-registry* :test #'equal)
 EOF
     put_text "$vm/text.tmp" SBCLRC
     cat > "$vm/text.tmp" <<'EOF'
@@ -238,13 +243,18 @@ build() {
     cat > "$vm/text.tmp" <<'EOF'
 @echo off
 SET SBCL_DOS_MERGE_STDERR=1
-sbcl --noinform --non-interactive --eval "(asdf:load-system :doslib/examples)" > BUILD.LOG
+REM SBCL.CORE again, with ASDF (which SBCLRC has just loaded) inside it
+sbcl --noinform --non-interactive --load D:\SBCL\MKCORE.LSP > BUILD.LOG
+sbcl --noinform --non-interactive --eval "(asdf:load-system :doslib/examples)" >> BUILD.LOG
 IF EXIST DOSLIB.COR DEL DOSLIB.COR
 sbcl --noinform --non-interactive --eval "(asdf:load-system :doslib/examples)" --eval "(doslib-examples:save-core)" >> BUILD.LOG
 IF EXIST EMACS.EXE DEL EMACS.EXE
 sbcl --noinform --non-interactive --eval "(asdf:load-system :doslib/emacs)" --eval "(doslib-emacs:build-emacs)" >> BUILD.LOG
 EOF
-    put_text "$vm/text.tmp" BUILD.BAT; rm -f "$vm/text.tmp"
+    put_text "$vm/text.tmp" BUILD.BAT
+    # (the running Lisp has read its core into memory, so it can write over the file)
+    printf '(sb-ext:save-lisp-and-die "D:/SBCL/sbcl.core")\n' > "$vm/text.tmp"
+    put_text "$vm/text.tmp" MKCORE.LSP; rm -f "$vm/text.tmp"
     mdel d:/SBCL/BUILD.LOG 2>/dev/null || true
     echo "building doslib on the DOS machine (this takes some minutes)"
     # (with the network card: the packet driver in FDAUTO.BAT waits for one)
@@ -261,7 +271,7 @@ EOF
         sleep 2; waited=`expr $waited + 2`
     done
     wait $qemu 2>/dev/null || true
-    mdel d:/SBCL/BUILD.BAT 2>/dev/null || true
+    mdel d:/SBCL/BUILD.BAT d:/SBCL/MKCORE.LSP 2>/dev/null || true
     mtype d:/SBCL/BUILD.LOG 2>/dev/null | tr -d '\r' > "$vm/build.log" || true
     if mdir d:/SBCL/EMACS.EXE > /dev/null 2>&1 && mdir d:/SBCL/DOSLIB.COR > /dev/null 2>&1 && ! grep -q 'Unhandled\|debugger invoked\|COMPILE-FILE-ERROR' "$vm/build.log"; then
         echo "built: the examples are compiled, DOSLIB.COR and EMACS.EXE are made (log: $vm/build.log)"
@@ -422,5 +432,5 @@ case "$command" in
             -nic user,model=pcnet,hostfwd=tcp:127.0.0.1:$web_port-:8080,hostfwd=tcp:127.0.0.1:$repl_port-:2323 \
             $RUN_DOS_QEMU_OPTIONS ;;
     *)
-        sed -n "2,53p" "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+        sed -n "2,56p" "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

@@ -43,6 +43,9 @@ load what you want:
 | `cpuid.lisp` | `cpuid` |
 | `memory.lisp` | `peek`, `peek16`, `peek32` |
 | `interrupts.lisp` | `get-vector`, `set-vector`, `code-selector`, `data-selector` |
+| `text.lisp` | `text-put`, `text-box`, `save-text-screen`, `get-key`, `text-input`: text mode by direct video memory |
+| `critical.lisp` | `catch-critical-errors`, `critical-error`: DOS device errors without "Abort, Retry, Fail?" |
+| `dialog.lisp` | `restart-dialog`, `dialog-ask`: choose a restart from a box on the screen |
 | `hotkey.lisp` | `install-hotkey`, `remove-hotkeys`, `poll-hotkeys`: keys taken from the keyboard interrupt |
 | `video.lisp` | `video-mode`, `set-palette`, `rainbow-palette`, `plot`, `draw-line`, `*vga*` |
 | `input.lisp` | `wait-tick`, `key-pressed-p`, `wait-key`, `finish` |
@@ -68,9 +71,9 @@ Each example is one file with a package of its own,
 | Category | Examples |
 |---|---|
 | `graphics/` | bmpview fire font gcviz lsystem mandel modex paint plasma raycast raytrace stars textfx turtle vesa wire3d |
-| `system/` | asm calc diskinfo dosinfo intvec ivt mcbwalk memmap pciscan ports serial sysinfo |
-| `lisp/` | bench life live shell snake special |
-| `network/` | ntp remote websrv wget |
+| `system/` | asm asmdsl calc diskinfo dosinfo intvec ivt mcbwalk memmap pciscan ports serial sysinfo |
+| `lisp/` | bench hotfix life live restarts resume shell snake special windows |
+| `network/` | browse files irc netpong ntp remote websrv wget |
 
 `data/` holds files the examples read; `support/` holds the host-side
 half of the serial example.

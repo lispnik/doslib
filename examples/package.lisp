@@ -29,7 +29,8 @@ own, DOSLIB-EXAMPLES.<NAME>, with a MAIN function, and is registered here:
 
 (defun run (name &rest arguments)
   "Run the example NAME (a string or symbol), passing ARGUMENTS to its MAIN."
-  (apply (example-function (find-example name)) arguments))
+  (apply (example-function (find-example name)) arguments)
+  (values))
 
 (defun list-examples (&optional (stream *standard-output*))
   "Print the examples, by category."

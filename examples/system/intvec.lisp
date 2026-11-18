@@ -36,22 +36,27 @@
     (format t "  [Lisp handler]  INT 60h  AX=~D BX=~D CX=~D  ->  EAX=~8,'0Xh~%"
             ax bx cx result)
     result))
-(defvar *callback*
-  (alien-sap (sb-alien::alien-lambda unsigned ((ax unsigned) (bx unsigned)
-                                               (cx unsigned) (dx unsigned))
-               (service ax bx cx dx))))
-(defvar *int60*                         ; the glue the vector points at
-  (apply #'machine-code
-         `(#x60 #x52 #x51 #x53 #x50 #xFC        ; pushad; push edx,ecx,ebx,eax; cld
-           #xB8 ,@(bytes32 (sap-int *callback*))        ; mov eax, callback
-           #xFF #xD0 #x83 #xC4 16               ; call eax; add esp,16
-           #x89 #x44 #x24 28 #x61 #xCF)))
-       ; mov [esp+28],eax; popad; iretd
-;;; unsigned client(void): asks for the 1000th prime, knowing only "INT 60h"
-(defvar *client* (machine-code #x53 #xB8 2 0 0 0 #xBB #xE8 3 0 0   ; mov eax,2; mov ebx,1000
-                               #xCD #x60 #x5B #xC3))
-                ; int 60h; pop ebx; ret
+;;; The code below is made when the demo runs, not when this file is
+;;; loaded: memory outside the Lisp heap does not survive into a saved core.
+(defvar *callback*)                     ; SERVICE, as something C could call
+(defvar *int60*)                        ; the glue the vector points at
+(defvar *client*)                       ; unsigned client(void): asks for the 1000th
+                                        ; prime, knowing only "INT 60h"
+(defun make-code ()
+  (setf *callback*
+        (alien-sap (sb-alien::alien-lambda unsigned ((ax unsigned) (bx unsigned)
+                                                     (cx unsigned) (dx unsigned))
+                     (service ax bx cx dx))))
+  (setf *int60*
+        (apply #'machine-code
+               `(#x60 #x52 #x51 #x53 #x50 #xFC          ; pushad; push edx,ecx,ebx,eax; cld
+                 #xB8 ,@(bytes32 (sap-int *callback*))  ; mov eax, callback
+                 #xFF #xD0 #x83 #xC4 16                 ; call eax; add esp,16
+                 #x89 #x44 #x24 28 #x61 #xCF)))         ; mov [esp+28],eax; popad; iretd
+  (setf *client* (machine-code #x53 #xB8 2 0 0 0 #xBB #xE8 3 0 0   ; mov eax,2; mov ebx,1000
+                               #xCD #x60 #x5B #xC3)))            ; int 60h; pop ebx; ret
 (defun demo ()
+  (make-code)
   (multiple-value-bind (old-selector old-offset) (get-vector #x60)
     (format t "~&INT 60h was ~4,'0X:~8,'0X~%" old-selector old-offset)
     (set-vector #x60 (code-selector) (sap-int *int60*))

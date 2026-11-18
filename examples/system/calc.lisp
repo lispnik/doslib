@@ -118,11 +118,6 @@
 (defparameter *width* 60)
 (defparameter *left* 10)
 (defparameter *top* 6)
-(defun text-put (x y string attribute)
-  (loop for c across string for i from x
-        when (< i 80)
-          do (setf (sap-ref-16 *screen* (* 2 (+ i (* 80 y))))
-                   (logior (logand (char-code c) 255) (ash attribute 8)))))
 (defun fit (string width)               ; exactly WIDTH characters, the tail if it is too long
   (let ((string (if (> (length string) width) (subseq string (- (length string) width)) string)))
     (format nil "~VA" width string)))

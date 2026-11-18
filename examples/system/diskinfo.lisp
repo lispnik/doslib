@@ -11,8 +11,8 @@
   (:export #:main))
 (in-package #:doslib-examples.diskinfo)
 
-(defvar *buffer* (dos-alloc 8192))
-      ; a 16-byte request packet, then sector data
+(defvar *buffer* nil)                   ; DOS memory: a 16-byte request packet, then
+                                        ; sector data.  Allocated when the example runs.
 (defun read-sectors (drive lba &optional (count 1))
   (let ((packet (linear *buffer*)))
     (setf (sap-ref-16 (int-sap packet) 0) 16 (sap-ref-16 (int-sap packet) 2) count
@@ -45,6 +45,7 @@
                          result)
                    (setf long '()))))))))
 (defun diskinfo (&optional (drive #x81))
+  (setf *buffer* (dos-alloc 8192))
   (let* ((mbr (read-sectors drive 0))
          (entry (+ mbr 446))
          (start (peek32 (+ entry 8))))

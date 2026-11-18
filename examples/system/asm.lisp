@@ -52,9 +52,9 @@
                       byte))))
 (defmacro defasm (name (&rest lisp-args) &body program)
   "Define a Lisp function whose body is machine code (cdecl arguments)."
-  `(let ((code (apply #'machine-code (assemble ',program))))
+  `(let ((code (saved-code (assemble ',program))))       ; (see SAVED-CODE in DOSLIB)
      (defun ,name ,lisp-args
-       (alien-funcall (sap-alien code (function unsigned ,@(mapcar (constantly 'unsigned)
+       (alien-funcall (sap-alien (code-address code) (function unsigned ,@(mapcar (constantly 'unsigned)
                                                                   lisp-args)))
                       ,@lisp-args))))
 (defun hex (bytes) (format nil "~{~2,'0X~^ ~}" bytes))

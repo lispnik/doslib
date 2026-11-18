@@ -9,6 +9,7 @@
 ;;; through SB-EXT:*INIT-HOOKS* -- whenever a core saved with the library in
 ;;; it starts up (an application made with SAVE-LISP-AND-DIE, say).
 (defun doslib-init ()
+  (incf *session*)
   (clrhash *stubs*)
   (setf *regs* (alien-sap (make-alien (unsigned 32) 8)))
   (setf *inb* (machine-code #x8B #x54 #x24 4 #x31 #xC0 #xEC #xC3))
@@ -21,9 +22,11 @@
           #x89 #x57 12 #x5F #x5B #xC3))
   (setf *get-cs* (machine-code #x8C #xC8 #xC3)
         *get-ds* (machine-code #x8C #xD8 #xC3))
+  (setf *critical-stub* nil)
   (setf *hotkey-old-vector* nil)        ; a new process: nothing is hooked
   (clrhash *hotkey-functions*)
   t)
 (doslib-init)
 (pushnew 'doslib-init sb-ext:*init-hooks*)
 (pushnew 'remove-hotkeys sb-ext:*exit-hooks*)   ; leave the keyboard as we found it
+(pushnew 'release-critical-errors sb-ext:*exit-hooks*)
