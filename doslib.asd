@@ -3,6 +3,8 @@
 ;;;;   doslib            the library: BIOS, DOS, ports, memory, video
 ;;;;   doslib/examples   programs that use it; (doslib-examples:menu) lists them
 ;;;;   doslib/emacs      an Emacs-like editor with a REPL, a debugger and Dired
+;;;;   doslib/emacs-extras   more for the editor: modes and commands that use
+;;;;                     the examples and the network
 
 (defsystem "doslib"
   :description "BIOS, DOS, port and memory access for SBCL on DOS."
@@ -53,6 +55,9 @@
                 :components ((:file "asm")
                              (:file "asmdsl")
                              (:file "calc")
+                             (:file "fatview")
+                             (:file "printer")
+                             (:file "probes")
                              (:file "diskinfo")
                              (:file "dosinfo")
                              (:file "intvec")
@@ -75,6 +80,10 @@
                              (:file "snake")
                              (:file "special")
                              (:file "windows")))
+               (:module "sound"
+                :depends-on ("package")
+                :components ((:file "adlib")     ; and the notation both use
+                             (:file "speaker" :depends-on ("adlib"))))
                (:module "network"
                 :depends-on ("package")
                 :components ((:file "browse")
@@ -110,3 +119,14 @@
                (:file "macros")
                (:file "keys")
                (:file "main")))
+
+(defsystem "doslib/emacs-extras"
+  :description "More for the editor: commands and modes built on the examples and the network."
+  :version "0.2.0"
+  :depends-on ("doslib/emacs" "doslib/examples")
+  :pathname "emacs-extras"
+  :components ((:file "commands")
+               (:file "hex")
+               (:file "web")
+               (:file "irc")
+               (:file "games")))

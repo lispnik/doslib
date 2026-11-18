@@ -23,6 +23,7 @@
   (setf *get-cs* (machine-code #x8C #xC8 #xC3)
         *get-ds* (machine-code #x8C #xD8 #xC3))
   (setf *critical-stub* nil)
+  (setf *hotkey-segment* nil)
   (setf *hotkey-old-vector* nil)        ; a new process: nothing is hooked
   (clrhash *hotkey-functions*)
   t)

@@ -77,7 +77,9 @@
               ((and (plusp (win-hscroll w)) (<= v (win-hscroll w)))
                (setf (win-hscroll w) (max 0 (- v 10))))
               ((>= v (+ (win-hscroll w) 79)) (setf (win-hscroll w) (- v 70)))))
-      (setf match (ignore-errors (matching-paren-position))))
+      ;; (matching parentheses matter in text and code, not in a mode that draws its own screen)
+      (unless (mode-hook (buf-mode b) 'line-attributes)
+        (setf match (ignore-errors (matching-paren-position)))))
     (multiple-value-bind (l1 c1 l2 c2)
         (if (and current (buf-mark-active b)) (region-bounds b) (values -1 0 -1 0))
       (dotimes (y height)
@@ -88,6 +90,12 @@
                 (when (< (length *attrs*) (+ n 1))
                   (setf *attrs* (make-array (* 2 (+ n 1)) :element-type '(unsigned-byte 8))))
                 (fill *attrs* 7 :end (1+ n))
+                (case (buf-mode b)
+                  ;; (a mode from elsewhere colours its lines by a function
+                  ;; on its name: see MODE-HOOK in buffers.lisp)
+                  ((dired-mode lisp-mode repl-mode))
+                  (t (let ((colour (mode-hook (buf-mode b) 'line-attributes)))
+                       (when colour (funcall colour b i text)))))
                 (case (buf-mode b)
                   (dired-mode (dired-attributes b i n))
                   (lisp-mode (lisp-attributes text))
@@ -124,8 +132,15 @@
                         (and (buf-file b) (if (buf-crlf b) "CRLF" "LF"))   ; its line endings
                         (buf-file b))
                 (if current #x70 #x17) 80)))
-(defun draw-echo (&optional (text (or *message* "")))
-  (put-string 0 24 (subseq text (max 0 (- (length text) 79))) 7 80))
+(defun draw-echo (&optional (text nil prompt))
+  ;; Of a prompt too long for the line, the end matters: that is where the
+  ;; typing is.  Of a message, the beginning.
+  (put-string 0 24
+              (cond (prompt (subseq text (max 0 (- (length text) 79))))
+                    ((> (length *message*) 79)
+                     (concatenate 'string (subseq *message* 0 76) "..."))
+                    (t (or *message* "")))
+              7 80))
 (defun redisplay ()
   (unless (= (peek #x449) 3) (video-mode 3))   ; something drew graphics: back to text
   (dolist (w *windows*) (draw-window w))

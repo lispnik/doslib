@@ -22,11 +22,37 @@
         (and (= scan #x7C) shifted "M-%")
         (row #x10 "qwertyuiop") (row #x1E "asdfghjkl") (row #x2C "zxcvbnm") (row #x78 "1234567890")
         (format nil "<scan-~X>" scan))))
+;;; While the editor waits for a key it can do other things: look at a
+;;; network connection, move a game along.  An idle hook is a function
+;;; called over and over during the wait; it returns true if it changed a
+;;; buffer, and the screen is then drawn again.  The same wait is where hot
+;;; keys (DOSLIB's INSTALL-HOTKEY) get their turn.  With neither, the
+;;; editor sleeps in the BIOS until a key arrives.
+(defvar *idle-hooks* '() "Functions to call while waiting for a key at the top level.")
+(defvar *idle* nil "True while the command loop, not the minibuffer, is reading a key.")
+(defun add-idle-hook (function) (pushnew function *idle-hooks*) function)
+(defun remove-idle-hook (function) (setf *idle-hooks* (remove function *idle-hooks*)) nil)
+(defun wait-for-key ()
+  "Returns the Shift state at the moment a key was seen, if it waited."
+  (when (and *idle* (or *idle-hooks* (hotkeys-installed-p)))
+    ;; (Shift may be let go before we come to fetch the key, a hook or a
+    ;; redisplay later: so look at once.)
+    (loop (when (key-pressed-p) (return (peek #x417)))
+          (let ((changed nil))
+               (dolist (hook *idle-hooks*)
+                 (handler-case (when (funcall hook) (setf changed t))
+                   (error (e)           ; a broken hook must not wedge the editor
+                     (remove-idle-hook hook)
+                     (message "Idle hook removed after an error: ~A" e)
+                     (setf changed t))))
+               (when (and changed (not (key-pressed-p))) (redisplay))))))
+
 (defun read-raw-key ()
   (if *unread*
       (pop *unread*)
-      (let* ((ax (word16 (int86 #x16 :ax #x1000))) (ascii (lo ax)) (scan (hi ax))
-             (shift (peek #x417))
+      (let* ((early-shift (wait-for-key))
+             (ax (word16 (int86 #x16 :ax #x1000))) (ascii (lo ax)) (scan (hi ax))
+             (shift (logior (or early-shift 0) (peek #x417)))
              (key (cond ((and (member ascii '(0 #xE0)) (/= scan 0)) (extended-key scan (logtest shift 3)))
                         ((= ascii 8) (if (= scan #x0E) "<backspace>" "C-h"))
                         ((= ascii 9) "TAB")

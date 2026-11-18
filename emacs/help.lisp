@@ -52,7 +52,7 @@
     (funcall command)))
 (define-command exit-editor ()
   "Leave the editor."
-  (when (and (find-if (lambda (b) (and (buf-modified b) (buf-file b))) *buffers*)
+  (when (and (find-if #'buffer-precious-p *buffers*)
              (not (ask-y-or-n "Modified buffers exist; exit anyway?")))
     (error 'quit-command))
   (throw 'exit-editor nil))

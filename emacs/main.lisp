@@ -64,8 +64,8 @@ command that takes the argument itself (its TAKES-PREFIX property)."
     (loop
       (handler-case (redisplay) (error (e) (draw-echo (format nil "Redisplay: ~A" e))))
       (setf *macro-mark* (length *macro-keys*))
-      (let ((*prefix-argument* (read-prefix)))
-        (multiple-value-bind (command keys) (read-command)
+      (let ((*prefix-argument* (let ((*idle* t)) (read-prefix))))
+        (multiple-value-bind (command keys) (let ((*idle* t)) (read-command))
           (setf *message* nil)
           (run-command command keys)))))
   (video-mode 3)

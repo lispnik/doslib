@@ -43,7 +43,7 @@
           #:*screen* #:*attrs* #:put-string #:set-cursor #:whitespace-p
           #:delimiter-p #:*highlight-words* #:lisp-attributes #:region-bounds
           #:mode-name #:visual-col #:draw-window #:draw-echo #:redisplay
-          #:extended-key #:read-raw-key #:read-key #:*global-map* #:mode-map
+          #:extended-key #:mode-hook #:buffer-precious-p #:*attrs* #:*idle-hooks* #:add-idle-hook #:remove-idle-hook #:read-raw-key #:read-key #:*global-map* #:mode-map
           #:split-keys #:bind-key #:read-command #:read-string #:complete-from
           #:complete-file #:ask-y-or-n #:forward-char #:backward-char
           #:move-lines #:next-line #:previous-line #:beginning-of-line

@@ -4,14 +4,20 @@
 ;;;; running program is doing with the keyboard -- the program never sees
 ;;;; the key.
 ;;;;
-;;;; The keyboard interrupt (IRQ 1, vector 9) can arrive at any instant,
-;;;; including in the middle of a garbage collection, so its handler cannot
-;;;; be Lisp.  It is a few machine instructions, assembled here, that look
-;;;; at the scan code: a hot key is noted in a table and swallowed, anything
-;;;; else goes on to the BIOS as usual.  Lisp acts on the note at the next
-;;;; safe moment, which is whenever the program calls POLL-HOTKEYS -- and
-;;;; WAIT-TICK, KEY-PRESSED-P and WAIT-KEY all do, so a program that uses
-;;;; those to pace itself or to look for a key needs no change.
+;;;; The BIOS's keyboard handler offers every scan code to interrupt 15h,
+;;;; function 4Fh, before it does anything with it, and drops the key if
+;;;; told to.  We put a few real-mode instructions on that interrupt: they
+;;;; note a hot key in a table and have it dropped, and pass everything else
+;;;; on.  Lisp acts on the note at the next safe moment, which is whenever
+;;;; the program calls POLL-HOTKEYS -- and WAIT-TICK, KEY-PRESSED-P and
+;;;; WAIT-KEY all do, so a program that uses those to pace itself or to look
+;;;; for a key needs no change.
+;;;;
+;;;; (An earlier version took the keyboard interrupt itself and read the
+;;;; scan code from the keyboard controller before passing the interrupt
+;;;; on.  Reading it lets the controller deliver the next one, so the BIOS,
+;;;; reading in its turn, could find a different code there: keys typed
+;;;; quickly were lost, or lost their Shift.)
 ;;;;
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
@@ -21,36 +27,41 @@
 (defvar *hotkey-table* nil)             ; 256 bytes: which scan codes are hot keys
 (defvar *hotkey-pending* nil)           ; 256 bytes: which have been pressed
 (defvar *hotkey-any* nil)               ; a word that is non-zero if any has
-(defvar *hotkey-old-vector* nil)        ; (selector . offset) while we are hooked in
+(defvar *hotkey-old-vector* nil)        ; (segment . offset) while we are hooked in
 (defvar *in-hotkey* nil)
 
 (defun hotkeys-installed-p () (and *hotkey-old-vector* t))
 
+(defvar *hotkey-segment* nil)           ; the handler and its tables, in DOS memory
 (defun hook-keyboard ()
-  (flet ((zeroed (n) (let ((p (alien-sap (make-alien (unsigned 8) n))))
-                       (dotimes (i n) (setf (sap-ref-8 p i) 0))
-                       p)))
-    (setf *hotkey-table* (zeroed 256) *hotkey-pending* (zeroed 256) *hotkey-any* (zeroed 4)))
-  (multiple-value-bind (old-selector old-offset) (get-vector 9)
-    (let* ((ds (data-selector))
-           (isr (apply #'machine-code
-                       `(#x1E #x50                              ; push ds / push eax
-                         #x66 #xB8 ,(lo ds) ,(hi ds) #x8E #xD8  ; mov ax,flat / mov ds,ax
-                         #xE4 #x60                              ; in al,60h     the scan code
-                         #x0F #xB6 #xC0                         ; movzx eax,al
-                         #x80 #xB8 ,@(bytes32 (sap-int *hotkey-table*)) 0   ; cmp byte [table+eax],0
-                         #x74 36                                ; je chain      not a hot key
-                         #xC6 #x80 ,@(bytes32 (sap-int *hotkey-pending*)) 1 ; mov byte [pending+eax],1
-                         #xC7 #x05 ,@(bytes32 (sap-int *hotkey-any*)) 1 0 0 0 ; mov dword [any],1
-                         #xE4 #x61 #x88 #xC4 #x0C #x80 #xE6 #x61 ; acknowledge the key
-                         #x88 #xE0 #xE6 #x61                    ;   at the keyboard controller
-                         #xB0 #x20 #xE6 #x20                    ; mov al,20h / out 20h,al   end of interrupt
-                         #x58 #x1F #xCF                         ; pop eax / pop ds / iretd
-                         #x58 #x1F                              ; chain: pop eax / pop ds
-                         #xEA ,@(bytes32 old-offset)            ; jmp far the old handler
-                         ,(lo old-selector) ,(hi old-selector)))))
-      (set-vector 9 (code-selector) (sap-int isr))
-      (setf *hotkey-old-vector* (cons old-selector old-offset)))))
+  ;; One block: the code at 0, the table of hot keys at 100h, the presses at
+  ;; 200h, the "any" word at 300h, the old vector at 304h.
+  (let* ((segment (or *hotkey-segment* (setf *hotkey-segment* (dos-alloc #x310))))
+         (memory (int-sap (linear segment))))
+    (dotimes (i #x310) (setf (sap-ref-8 memory i) 0))
+    (loop for byte in '(#x80 #xFC #x4F                  ; cmp ah,4Fh    the keyboard intercept?
+                        #x75 36                         ; jne chain
+                        #x53 #x30 #xFF #x88 #xC3        ; push bx / xor bh,bh / mov bl,al
+                        #x2E #x80 #xBF #x00 #x01 #x00   ; cmp byte cs:[bx+100h],0
+                        #x74 22                         ; je not-hot
+                        #x2E #xC6 #x87 #x00 #x02 #x01   ; mov byte cs:[bx+200h],1
+                        #x2E #xC6 #x06 #x00 #x03 #x01   ; mov byte cs:[300h],1
+                        #x5B                            ; pop bx
+                        #x55 #x89 #xE5                  ; push bp / mov bp,sp
+                        #x80 #x66 #x06 #xFE             ; and byte [bp+6],FEh   carry clear: drop the key
+                        #x5D #xCF                       ; pop bp / iret
+                        #x5B                            ; not-hot: pop bx
+                        #x2E #xFF #x2E #x04 #x03)       ; chain: jmp far cs:[304h]
+          for i from 0
+          do (setf (sap-ref-8 memory i) byte))
+    (setf *hotkey-table* (int-sap (linear segment #x100))
+          *hotkey-pending* (int-sap (linear segment #x200))
+          *hotkey-any* (int-sap (linear segment #x300)))
+    (multiple-value-bind (ax bx cx dx) (int86 #x31 :ax #x0200 :bx #x15)   ; the real-mode vector
+      (declare (ignore ax bx))
+      (setf (sap-ref-16 memory #x304) (word16 dx) (sap-ref-16 memory #x306) (word16 cx))
+      (int86 #x31 :ax #x0201 :bx #x15 :cx segment :dx 0)
+      (setf *hotkey-old-vector* (cons (word16 cx) (word16 dx))))))
 
 (defun install-hotkey (scan-code function)
   "Make the key with SCAN-CODE (F12 is #x58, F11 #x57, Scroll Lock #x46)
@@ -61,9 +72,9 @@ call FUNCTION, with no arguments, the next time the program polls."
   scan-code)
 
 (defun remove-hotkeys ()
-  "Give every hot key back to the keyboard, and the keyboard interrupt to its old handler."
+  "Give every hot key back to the keyboard, and interrupt 15h to its old handler."
   (when *hotkey-old-vector*
-    (set-vector 9 (car *hotkey-old-vector*) (cdr *hotkey-old-vector*))
+    (int86 #x31 :ax #x0201 :bx #x15 :cx (car *hotkey-old-vector*) :dx (cdr *hotkey-old-vector*))
     (setf *hotkey-old-vector* nil))
   (clrhash *hotkey-functions*)
   nil)

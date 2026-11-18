@@ -13,6 +13,17 @@
 ;;; A window that is not selected remembers its own point in POINT; the
 ;;; selected window's point is its buffer's.
 (defstruct win buf (top 0) (hscroll 0) row height point)
+;;; What a mode adds to the editor's own behaviour hangs on the mode's
+;;; name, as properties holding functions:
+;;;   line-attributes  (buffer line-number text)  set the colours of one line
+;;;                    in *ATTRS*, an attribute byte per character, as it is drawn
+;;;   kill-function    (buffer)  the buffer is being killed
+;;;   ask-before-kill  true: a modified buffer is worth a question even
+;;;                    though it has no file
+(defun mode-hook (mode name) (and (symbolp mode) (get mode name)))
+(defun buffer-precious-p (b)
+  "Would killing B lose work?"
+  (and (buf-modified b) (or (buf-file b) (mode-hook (buf-mode b) 'ask-before-kill))))
 (defvar *buffers* '())
 (defvar *buf* nil "The current buffer.")
 (defvar *windows* '())

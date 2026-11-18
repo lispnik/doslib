@@ -8,13 +8,14 @@ nothing else, the `sb-bsd-sockets` contrib and a packet driver.
 
 ## Systems
 
-`doslib.asd` defines three ASDF systems.
+`doslib.asd` defines four ASDF systems.
 
 | System | Directory | Package | What it is |
 |---|---|---|---|
 | `doslib` | `src/` | `doslib` | The library |
 | `doslib/examples` | `examples/` | `doslib-examples`, plus one package per example | Example programs |
 | `doslib/emacs` | `emacs/` | `doslib-emacs`, `doslib-emacs-user` | The editor |
+| `doslib/emacs-extras` | `emacs-extras/` | `doslib-emacs` | More for the editor, built on the examples and the network |
 
 Tell ASDF where the project is (the launcher's `SBCLRC` does this), then
 load what you want:
@@ -46,7 +47,7 @@ load what you want:
 | `text.lisp` | `text-put`, `text-box`, `save-text-screen`, `get-key`, `text-input`: text mode by direct video memory |
 | `critical.lisp` | `catch-critical-errors`, `critical-error`: DOS device errors without "Abort, Retry, Fail?" |
 | `dialog.lisp` | `restart-dialog`, `dialog-ask`: choose a restart from a box on the screen |
-| `hotkey.lisp` | `install-hotkey`, `remove-hotkeys`, `poll-hotkeys`: keys taken from the keyboard interrupt |
+| `hotkey.lisp` | `install-hotkey`, `remove-hotkeys`, `poll-hotkeys`: keys taken through the BIOS keyboard intercept |
 | `video.lisp` | `video-mode`, `set-palette`, `rainbow-palette`, `plot`, `draw-line`, `*vga*` |
 | `input.lisp` | `wait-tick`, `key-pressed-p`, `wait-key`, `finish` |
 | `init.lisp` | `doslib-init`, run at load and whenever a saved core starts |
@@ -71,8 +72,9 @@ Each example is one file with a package of its own,
 | Category | Examples |
 |---|---|
 | `graphics/` | bmpview fire font gcviz lsystem mandel modex paint plasma raycast raytrace stars textfx turtle vesa wire3d |
-| `system/` | asm asmdsl calc diskinfo dosinfo intvec ivt mcbwalk memmap pciscan ports serial sysinfo |
+| `system/` | asm asmdsl calc diskinfo dosinfo fatview intvec ivt mcbwalk memmap pciscan ports printer probes serial sysinfo |
 | `lisp/` | bench hotfix life live restarts resume shell snake special windows |
+| `sound/` | adlib speaker |
 | `network/` | browse files irc netpong ntp remote websrv wget |
 
 `data/` holds files the examples read; `support/` holds the host-side
@@ -92,6 +94,27 @@ To add one, write a file with a `main` function, register it with
 `F1` lists the keys. `C-c C-z` opens the REPL, `C-x d` is Dired, and
 `C-x C-c` leaves. An error in evaluated code opens a debugger that lists
 the restarts.
+
+### The extras
+
+`(asdf:load-system :doslib/emacs-extras)` adds these; the `EMACS.EXE` that
+the launcher builds has them.
+
+| Command | What it does |
+|---|---|
+| `M-x run-example` (`C-c x`) | Run an example, with completion on its name, and come back |
+| `M-x quickload` (`C-c q`) | Load a system with Quicklisp, with completion; output in `*quickload*` |
+| `F12` | The pop-up calculator (`M-x calculator-hotkey` turns it off) |
+| `M-x restart-dialog-mode` | Errors in evaluated code offer their restarts in a box |
+| `M-x hex-find-file`, `M-x hex-disk-sector` | A hex editor for files; disk sectors, read-only |
+| `M-x browse-url` | A text browser for plain HTTP and Gopher: `TAB` to a link, `RET` follows, `b` back |
+| `M-x irc` | An IRC client: a buffer per channel, filled while the editor is idle |
+| `M-x blocks`, `M-x snake` | Games, in a buffer |
+
+A mode of your own can do what these do: an idle hook (`add-idle-hook`)
+is called while the editor waits for a key, and properties on the mode's
+name colour its lines and hear of its buffers being killed (see
+`mode-hook` in `emacs/buffers.lisp`).
 
 What you type at the REPL is read in the package `doslib-emacs-user`
 (nickname `emacs-user`), which uses Lisp, `doslib` and everything the

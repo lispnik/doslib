@@ -88,10 +88,12 @@ that runs over several lines would become part of the string."
                          (t (make-buf name))))))
 (define-command kill-buffer ()
   "Get rid of the current buffer."
-  (when (and (buf-modified *buf*) (buf-file *buf*)
+  (when (and (buffer-precious-p *buf*)
              (not (ask-y-or-n (format nil "~A is modified; kill it anyway?" (buf-name *buf*)))))
     (error 'quit-command))
   (let ((dead *buf*))
+    (let ((farewell (mode-hook (buf-mode dead) 'kill-function)))
+      (when farewell (funcall farewell dead)))
     (setf *buffers* (remove dead *buffers*))
     (unless *buffers* (make-buf "*scratch*"))
     (dolist (w *windows*)

@@ -9,7 +9,7 @@ own, DOSLIB-EXAMPLES.<NAME>, with a MAIN function, and is registered here:
   (doslib-examples:list-examples)
   (doslib-examples:run \"plasma\")
   (doslib-examples:menu)")
-  (:export #:define-example #:run #:list-examples #:list-names #:menu #:data-file
+  (:export #:define-example #:run #:list-examples #:list-names #:example-names #:menu #:data-file
            #:build-executable #:save-core))
 (in-package #:doslib-examples)
 
@@ -34,7 +34,7 @@ own, DOSLIB-EXAMPLES.<NAME>, with a MAIN function, and is registered here:
 
 (defun list-examples (&optional (stream *standard-output*))
   "Print the examples, by category."
-  (dolist (category '(:graphics :system :lisp :network :other))
+  (dolist (category '(:graphics :system :lisp :sound :network :other))
     (let ((examples (sort (remove category *examples* :key #'example-category :test-not #'eq)
                           #'string< :key #'example-name)))
       (when examples
@@ -43,9 +43,13 @@ own, DOSLIB-EXAMPLES.<NAME>, with a MAIN function, and is registered here:
           (format stream "  ~10A ~A~%" (example-name example) (example-description example))))))
   (values))
 
+(defun example-names ()
+  "The names of all the examples, in alphabetical order."
+  (sort (mapcar #'example-name *examples*) #'string<))
+
 (defun list-names (&optional (stream *standard-output*))
   "Print just the names of the examples, by category: it fits on one screen."
-  (dolist (category '(:graphics :system :lisp :network :other))
+  (dolist (category '(:graphics :system :lisp :sound :network :other))
     (let ((names (sort (mapcar #'example-name
                                (remove category *examples* :key #'example-category :test-not #'eq))
                        #'string<)))
@@ -88,4 +92,7 @@ own, DOSLIB-EXAMPLES.<NAME>, with a MAIN function, and is registered here:
 (defun save-core (&optional (file "doslib.cor"))
   "Save a core with the examples already loaded, so that they start quickly:
 sbcl --core doslib.cor.  This ends the Lisp session."
+  ;; (a core saved by "sbcl --non-interactive" would otherwise remember that
+  ;; errors are to end the session, not open the debugger)
+  (sb-ext:enable-debugger)
   (sb-ext:save-lisp-and-die file))

@@ -249,11 +249,11 @@ sbcl --noinform --non-interactive --eval "(asdf:load-system :doslib/examples)" >
 IF EXIST DOSLIB.COR DEL DOSLIB.COR
 sbcl --noinform --non-interactive --eval "(asdf:load-system :doslib/examples)" --eval "(doslib-examples:save-core)" >> BUILD.LOG
 IF EXIST EMACS.EXE DEL EMACS.EXE
-sbcl --noinform --non-interactive --eval "(asdf:load-system :doslib/emacs)" --eval "(doslib-emacs:build-emacs)" >> BUILD.LOG
+sbcl --noinform --non-interactive --eval "(asdf:load-system :doslib/emacs-extras)" --eval "(doslib-emacs:build-emacs)" >> BUILD.LOG
 EOF
     put_text "$vm/text.tmp" BUILD.BAT
     # (the running Lisp has read its core into memory, so it can write over the file)
-    printf '(sb-ext:save-lisp-and-die "D:/SBCL/sbcl.core")\n' > "$vm/text.tmp"
+    printf '(sb-ext:enable-debugger)\n(sb-ext:save-lisp-and-die "D:/SBCL/sbcl.core")\n' > "$vm/text.tmp"
     put_text "$vm/text.tmp" MKCORE.LSP; rm -f "$vm/text.tmp"
     mdel d:/SBCL/BUILD.LOG 2>/dev/null || true
     echo "building doslib on the DOS machine (this takes some minutes)"
@@ -392,7 +392,17 @@ make_utm_config() {
     </dict>
   </array>
   <key>Serial</key><array/>
-  <key>Sound</key><array/>
+  <key>Sound</key>
+  <array>
+    <dict>
+      <key>Hardware</key><string>adlib</string>
+      <key>Identifier</key><string>`uuidgen`</string>
+    </dict>
+    <dict>
+      <key>Hardware</key><string>pcspk</string>
+      <key>Identifier</key><string>`uuidgen`</string>
+    </dict>
+  </array>
 </dict>
 </plist>
 EOF
@@ -426,11 +436,14 @@ case "$command" in
     run)
         if running; then echo "run-dos.sh: the DOS machine is already running" >&2; exit 1; fi
         if [ ! -f "$boot" ] || [ ! -f "$data" ]; then make_boot; make_data; copy_files; build; fi
+        # The PC speaker and an AdLib card, heard through the Mac (RUN_DOS_SOUND=0: neither)
+        sound="-audiodev coreaudio,id=snd -machine pcspk-audiodev=snd -device adlib,audiodev=snd"
+        if [ "${RUN_DOS_SOUND:-1}" = 0 ]; then sound=; fi
         exec qemu-system-i386 -m 512 -cpu pentium3 -name "SBCL on FreeDOS" \
             -drive file="$boot",format=raw,if=ide,index=0 \
             -drive file="$data",format=raw,if=ide,index=1 \
             -nic user,model=pcnet,hostfwd=tcp:127.0.0.1:$web_port-:8080,hostfwd=tcp:127.0.0.1:$repl_port-:2323 \
-            $RUN_DOS_QEMU_OPTIONS ;;
+            $sound $RUN_DOS_QEMU_OPTIONS ;;
     *)
         sed -n "2,56p" "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
