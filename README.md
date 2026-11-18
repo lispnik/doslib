@@ -112,4 +112,20 @@ starts the editor. The comments at the top of the script say what it
 needs: QEMU, mtools, a FreeDOS image, a packet driver, and SBCL built for
 DOS.
 
+## Quicklisp
+
+Quicklisp works on the DOS port, given the `sb-posix` subset that
+`make-dos-contrib.sh sb-posix` builds in the SBCL tree. With
+`quicklisp.lisp` on the DOS disk (the launcher copies it from
+`dl-quicklisp/` if it is there), `ql` at the DOS prompt installs Quicklisp
+the first time and starts SBCL with it loaded after that:
+
+```lisp
+(ql:quickload "cl-ppcre")
+(cl-ppcre:regex-replace-all "(\\w+) on (\\w+)" "Lisp on DOS" "\\2 runs \\1")   ; => "DOS runs Lisp"
+```
+
+Libraries are fetched over plain HTTP, so there is no TLS involved; ones
+that need foreign libraries or threads will not load.
+
 Screenshots are in `doc/shots/`.

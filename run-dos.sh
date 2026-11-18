@@ -26,7 +26,8 @@
 #   D:\SBCL     sbcl.exe, sbcl.core, CONTRIB\ (ASDF, sb-bsd-sockets), SBCLRC
 #               (the init file: loads ASDF and tells it about D:\DOSLIB),
 #               EMACS.EXE, DEMO.BAT, DOSLIB.COR (a core with the examples
-#               loaded, for DEMO), the packet driver, WATTCP.CFG
+#               loaded, for DEMO), QL.BAT (Quicklisp), the packet driver,
+#               WATTCP.CFG
 #   D:\DOSLIB   the doslib project: doslib.asd, src\, examples\, emacs\
 # It boots into D:\SBCL with DOSLFN (long file names), HDPMI32 (the DPMI
 # host) and a packet driver for the emulated network card loaded.
@@ -41,7 +42,9 @@
 # Needs qemu-system-i386 and mtools, and two directories besides this one:
 #   SBCL_DOS_TOOLS  (default: the directory above this one) with
 #                   dl-freedos/lite/FD14LITE.img, the FreeDOS 1.4 "LiteUSB"
-#                   image, and dl-pktdrv/crynwr, the Crynwr packet drivers;
+#                   image, dl-pktdrv/crynwr, the Crynwr packet drivers, and
+#                   (optionally) dl-quicklisp/quicklisp.lisp from
+#                   https://beta.quicklisp.org/quicklisp.lisp;
 #                   the machines' disks are kept in its vm/ directory
 #   SBCL_SRC        (default: sbcl-dos-experiment next to SBCL_DOS_TOOLS)
 #                   the SBCL source tree, built for DOS with make-dos.sh
@@ -167,6 +170,26 @@ GOTO end
 SET DEMOSBCL=
 EOF
     put_text "$vm/text.tmp" DEMO.BAT
+    # Quicklisp: QL.BAT installs it the first time (over the network, into
+    # D:\HOME\quicklisp) and starts SBCL with it loaded after that.
+    if [ -f "$tools/dl-quicklisp/quicklisp.lisp" ]; then
+        mcopy -o "$tools/dl-quicklisp/quicklisp.lisp" d:/SBCL/
+    fi
+    cat > "$vm/text.tmp" <<'EOF'
+@echo off
+REM QL   start SBCL with Quicklisp; the first time, install Quicklisp
+IF EXIST D:\HOME\quicklisp\setup.lisp GOTO have
+IF NOT EXIST D:\SBCL\quicklisp.lisp GOTO missing
+sbcl --noinform --load D:\SBCL\quicklisp.lisp --eval "(quicklisp-quickstart:install)"
+GOTO end
+:missing
+ECHO D:\SBCL\quicklisp.lisp is not there: get it from https://beta.quicklisp.org/quicklisp.lisp
+GOTO end
+:have
+sbcl --noinform --load D:\HOME\quicklisp\setup.lisp
+:end
+EOF
+    put_text "$vm/text.tmp" QL.BAT
     cat > "$vm/text.tmp" <<EOF
 SBCL for DOS
 ============
@@ -187,6 +210,9 @@ Network examples (the packet driver is loaded at boot):
   (doslib-examples:run "websrv")   host: open http://127.0.0.1:$web_port/
   (doslib-examples:run "remote")   host: nc 127.0.0.1 $repl_port
   (doslib-examples:run "ntp")
+
+Quicklisp:  ql   installs it the first time (it needs the network), and
+after that starts SBCL with it loaded:  (ql:quickload "alexandria")
 
 Your own systems: put them in a directory, add it to D:\\SBCL\\SBCLRC.
 
@@ -385,5 +411,5 @@ case "$command" in
             -nic user,model=pcnet,hostfwd=tcp:127.0.0.1:$web_port-:8080,hostfwd=tcp:127.0.0.1:$repl_port-:2323 \
             $RUN_DOS_QEMU_OPTIONS ;;
     *)
-        sed -n "2,49p" "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+        sed -n "2,52p" "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
