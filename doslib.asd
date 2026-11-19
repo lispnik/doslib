@@ -133,6 +133,7 @@
   :depends-on ("doslib/emacs" "doslib/examples")
   :pathname "emacs-extras"
   :components ((:file "commands")
+               (:file "mouse")
                (:file "hex")
                (:file "web")
                (:file "irc")

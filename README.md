@@ -142,6 +142,7 @@ the launcher builds has them.
 | `M-x hex-find-file`, `M-x hex-disk-sector` | A hex editor for files; disk sectors, read-only |
 | `M-x browse-url` | A text browser for plain HTTP and Gopher: `TAB` to a link, `RET` follows, `b` back |
 | `M-x irc` | An IRC client: a buffer per channel, filled while the editor is idle |
+| The mouse | Click to put the cursor somewhere, drag to select, turn the wheel to move; `M-x mouse-mode` turns it off |
 | `M-x blocks`, `M-x snake` | Games, in a buffer |
 | `M-x live` | Live coding on two displays: the editor moves to the second, and the VGA shows what the code draws, redefined as you type (`M-x live-stop` ends it) |
 

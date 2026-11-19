@@ -39,7 +39,7 @@ ALIEN-FUNCALL.")
           ;; the mouse
           #:mouse-driver-p #:mouse-init #:mouse-show #:mouse-hide #:with-mouse-hidden
           #:mouse-position #:mouse-cell #:mouse-pixel #:mouse-move #:mouse-range
-          #:mouse-presses #:mouse-releases #:mouse-motion
+          #:mouse-presses #:mouse-releases #:mouse-motion #:mouse-wheel-p
           ;; disks
           #:disk-error #:disk-error-drive #:disk-error-sector #:disk-error-code
           #:disk-error-reason #:current-drive #:drive-number #:drive-letter

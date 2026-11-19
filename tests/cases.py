@@ -26,6 +26,7 @@ FILES = {
     'T2.TXT': 'one\ntwo\nthree\n',
     'T3.TXT': 'alpha beta\nalpha gamma\n',
     'T4.TXT': 'one\ntwo\n',
+    'T5.TXT': ''.join('line %02d of the file for the mouse test: long enough to click in\n' % n for n in range(1, 21)),
 }
 
 
@@ -104,6 +105,21 @@ def click(session):
     time.sleep(0.5)
     m.monitor('mouse_button 0')
     time.sleep(0.5)
+
+
+def press(down):
+    """Press the left mouse button, move the mouse DOWN, and let go."""
+    def step(session):
+        m = session.m
+        m.monitor('mouse_button 1')
+        time.sleep(0.6)
+        if down:
+            for part in range(4):
+                m.monitor('mouse_move 0 %d' % (down // 4))
+                time.sleep(0.3)
+        m.monitor('mouse_button 0')
+        time.sleep(0.6)
+    return step
 
 
 def dos(name, *steps):
@@ -265,6 +281,13 @@ def all_cases():
               ('key', 'alt-comma'), ('see', '*scratch*'), ('gone', '(defun emacs (&optional file)'),
               ('type', '(defun here () 1)'), ('key', 'ret', 'ret'), ('type', '(here'),
               ('key', 'alt-dot'), ('see', 'Find definition of: here'), ('key', 'ret'), ('see', '*scratch*, line 4')),
+        # the mouse starts in the middle of the screen: a click puts point there (line 13,
+        # column 40); a drag downwards selects from there, which M-w copies
+        emacs('emacs-mouse', 'T5.TXT', ('see', 'Read 20 lines'), ('wait', 1),
+              ('host', press(0)), ('type', 'X'),
+              ('host', press(24)), ('key', 'alt-w'),
+              ('key', 'shift-alt-dot', 'ctrl-y'),
+              ('key', 'ctrl-x', 'ctrl-s'), ('see', 'Wrote')),
         emacs('emacs-search', 'T3.TXT', ('see', 'gamma'),
               ('key', 'ctrl-s'), ('type', 'gamma'), ('key', 'ret'), ('type', '!'),
               ('key', 'shift-alt-comma', 'shift-alt-5'), ('see', 'Replace string'),
@@ -343,6 +366,17 @@ def sprite_saved(machine, host):
         raise Failure('SPRITE.DAT has white at %s and other colours at %s' % (white, others[:8]))
 
 
+def mouse_edited(machine, host):
+    found = machine.read('SBCL/T5.TXT')
+    lines = (found or b'').decode('latin-1').split('\r\n')
+    if len(lines) < 21 or lines[12][40:41] != 'X':
+        raise Failure('T5.TXT: the click did not put point at line 13, column 40: %r' % lines[12:13])
+    # what was dragged over and copied, from the X on, is at the end as well
+    tail = lines[20:]
+    if not tail[0].startswith('X') or len(tail) < 2:
+        raise Failure('T5.TXT: the dragged text was not copied to the end: %r' % tail)
+
+
 def file_is(name, expected):
     def check(machine, host):
         found = machine.read('SBCL/' + name)
@@ -364,5 +398,6 @@ AFTER = [
     ('emacs-kill-yank', file_is('T2.TXT', b'two\r\none\r\nthree\r\n')),
     ('emacs-final-newline', file_is('T4.TXT', b'one\r\ntwo\r\nthree\r\n')),
     ('sprite', sprite_saved),
+    ('emacs-mouse', mouse_edited),
     ('emacs-search', file_is('T3.TXT', b'delta beta\r\ndelta gamma!\r\n')),
 ]

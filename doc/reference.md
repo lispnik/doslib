@@ -343,13 +343,16 @@ Take the driver's pointer off the screen.
 Run BODY with the pointer off the screen: for drawing where it might be.
 
 **`mouse-position`** `` — Function  
-Where the mouse is and what is pressed.  Returns X, Y (the driver's units) and the buttons: bit 0 is the left one, bit 1 the right, bit 2 the middle.
+Where the mouse is and what is pressed.  Returns X, Y (the driver's units), the buttons -- bit 0 is the left one, bit 1 the right, bit 2 the middle -- and how far the wheel has turned since this was last asked (negative is away from you; always 0 unless MOUSE-WHEEL-P has said there is one).
+
+**`mouse-wheel-p`** `` — Function  
+Does the mouse have a wheel that the driver reports (CTMOUSE's wheel interface)?  Asking turns the reporting on.
 
 **`mouse-cell`** `` — Function  
-The character cell the mouse is in: column, row, and the buttons.
+The character cell the mouse is in: column, row, the buttons and the wheel.
 
 **`mouse-pixel`** `` — Function  
-The pixel the mouse is at in a graphics mode: x, y, and the buttons.
+The pixel the mouse is at in a graphics mode: x, y, the buttons and the wheel.
 
 **`mouse-move`** `x y` — Function  
 Put the mouse at X, Y (the driver's units).

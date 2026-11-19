@@ -43,19 +43,29 @@ is no driver or no mouse.  The pointer starts hidden, in the middle."
 
 (defun mouse-position ()
   "Where the mouse is and what is pressed.  Returns X, Y (the driver's
-units) and the buttons: bit 0 is the left one, bit 1 the right, bit 2 the middle."
+units), the buttons -- bit 0 is the left one, bit 1 the right, bit 2 the
+middle -- and how far the wheel has turned since this was last asked
+(negative is away from you; always 0 unless MOUSE-WHEEL-P has said there is one)."
   (multiple-value-bind (ax bx cx dx) (int86 #x33 :ax 3)
     (declare (ignore ax))
-    (values (word16 cx) (word16 dx) (logand bx 7))))
+    (let ((wheel (hi bx)))
+      (values (word16 cx) (word16 dx) (logand bx 7)
+              (if (logbitp 7 wheel) (- wheel 256) wheel)))))
+(defun mouse-wheel-p ()
+  "Does the mouse have a wheel that the driver reports (CTMOUSE's wheel
+interface)?  Asking turns the reporting on."
+  (multiple-value-bind (ax bx cx) (int86 #x33 :ax #x11)
+    (declare (ignore bx))
+    (and (= (word16 ax) #x574D) (logbitp 0 cx))))
 (defun mouse-cell ()
-  "The character cell the mouse is in: column, row, and the buttons."
-  (multiple-value-bind (x y buttons) (mouse-position)
-    (values (min 79 (floor x 8)) (min 49 (floor y 8)) buttons)))
+  "The character cell the mouse is in: column, row, the buttons and the wheel."
+  (multiple-value-bind (x y buttons wheel) (mouse-position)
+    (values (min 79 (floor x 8)) (min 49 (floor y 8)) buttons wheel)))
 (defun mouse-pixel ()
-  "The pixel the mouse is at in a graphics mode: x, y, and the buttons."
-  (multiple-value-bind (x y buttons) (mouse-position)
+  "The pixel the mouse is at in a graphics mode: x, y, the buttons and the wheel."
+  (multiple-value-bind (x y buttons wheel) (mouse-position)
     ;; (the BIOS says how many text columns the mode has: 40 means 320 across)
-    (values (if (= (peek16 #x44A) 40) (ash x -1) x) y buttons)))
+    (values (if (= (peek16 #x44A) 40) (ash x -1) x) y buttons wheel)))
 (defun mouse-move (x y)
   "Put the mouse at X, Y (the driver's units)."
   (int86 #x33 :ax 4 :cx x :dx y) (values))
