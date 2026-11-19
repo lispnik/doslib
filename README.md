@@ -110,6 +110,10 @@ the launcher builds has them.
 | `M-x browse-url` | A text browser for plain HTTP and Gopher: `TAB` to a link, `RET` follows, `b` back |
 | `M-x irc` | An IRC client: a buffer per channel, filled while the editor is idle |
 | `M-x blocks`, `M-x snake` | Games, in a buffer |
+| `M-x live` | Live coding on two displays: the editor moves to the second, and the VGA shows what the code draws, redefined as you type (`M-x live-stop` ends it) |
+
+`M-x live` needs a second display card: QEMU's and UTM's `secondary-vga`
+(the launcher's machines have one), or a monochrome card beside the VGA.
 
 A mode of your own can do what these do: an idle hook (`add-idle-hook`)
 is called while the editor waits for a key, and properties on the mode's

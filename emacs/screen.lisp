@@ -4,7 +4,19 @@
 
 (in-package #:doslib-emacs)
 
+;;; The editor draws character cells -- a character and an attribute byte
+;;; each, 80 by 25 -- into *SCREEN*: normally the VGA's text memory itself.
+;;; To show the editor somewhere else (a second display: see
+;;; emacs-extras/live.lisp), point *SCREEN* at 4000 bytes of your own and
+;;; set *FLUSH-SCREEN*, called with no arguments whenever the cells have
+;;; been drawn, *PLACE-CURSOR*, called with a column and a row, and
+;;; *LEAVE-DISPLAY*, called when the editor exits.
 (defvar *screen* (int-sap #xB8000))
+(defvar *flush-screen* nil)
+(defvar *place-cursor* nil)
+(defvar *leave-display* nil)
+(defun reset-display ()
+  (setf *screen* (int-sap #xB8000) *flush-screen* nil *place-cursor* nil *leave-display* nil))
 (defvar *attrs* (make-array 256 :element-type '(unsigned-byte 8)))
 (defun put-string (x y string attribute &optional (width (length string)))
   (dotimes (i width)
@@ -12,7 +24,11 @@
       (when (< (+ x i) 80)
         (setf (sap-ref-16 *screen* (* 2 (+ x i (* 80 y))))
               (logior (if (< code 256) code 63) (ash attribute 8)))))))
-(defun set-cursor (x y) (int86 #x10 :ax #x0200 :bx 0 :dx (logior (ash y 8) x)))
+(defun set-cursor (x y)
+  (if *place-cursor*
+      (funcall *place-cursor* x y)
+      (int86 #x10 :ax #x0200 :bx 0 :dx (logior (ash y 8) x)))
+  (when *flush-screen* (funcall *flush-screen*)))
 (defun whitespace-p (c) (member c '(#\Space #\Tab #\Newline)))
 (defun delimiter-p (c) (or (whitespace-p c) (find c "()\"';")))
 (defvar *highlight-words*
@@ -140,9 +156,11 @@
                     ((> (length *message*) 79)
                      (concatenate 'string (subseq *message* 0 76) "..."))
                     (t (or *message* "")))
-              7 80))
+              7 80)
+  (when *flush-screen* (funcall *flush-screen*)))
 (defun redisplay ()
-  (unless (= (peek #x449) 3) (video-mode 3))   ; something drew graphics: back to text
+  ;; something drew graphics: back to text (unless the VGA is not ours to draw on)
+  (unless (or *flush-screen* (= (peek #x449) 3)) (video-mode 3))
   (dolist (w *windows*) (draw-window w))
   (draw-echo)
   (set-cursor (- (visual-col (current-line) (buf-col *buf*)) (win-hscroll *window*))

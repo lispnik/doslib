@@ -347,6 +347,13 @@ make_utm_config() {
       <key>DownscalingFilter</key><string>Linear</string>
       <key>UpscalingFilter</key><string>Nearest</string>
     </dict>
+    <dict>
+      <key>Hardware</key><string>secondary-vga</string>
+      <key>DynamicResolution</key><false/>
+      <key>NativeResolution</key><false/>
+      <key>DownscalingFilter</key><string>Linear</string>
+      <key>UpscalingFilter</key><string>Nearest</string>
+    </dict>
   </array>
   <key>Drive</key>
   <array>
@@ -439,7 +446,9 @@ case "$command" in
         # The PC speaker and an AdLib card, heard through the Mac (RUN_DOS_SOUND=0: neither)
         sound="-audiodev coreaudio,id=snd -machine pcspk-audiodev=snd -device adlib,audiodev=snd"
         if [ "${RUN_DOS_SOUND:-1}" = 0 ]; then sound=; fi
-        exec qemu-system-i386 -m 512 -cpu pentium3 -name "SBCL on FreeDOS" \
+        # A second display card, for the editor's M-x live (QEMU's own window
+        # shows one display at a time: its View menu switches between them)
+        exec qemu-system-i386 -m 512 -cpu pentium3 -name "SBCL on FreeDOS" -device secondary-vga \
             -drive file="$boot",format=raw,if=ide,index=0 \
             -drive file="$data",format=raw,if=ide,index=1 \
             -nic user,model=pcnet,hostfwd=tcp:127.0.0.1:$web_port-:8080,hostfwd=tcp:127.0.0.1:$repl_port-:2323 \

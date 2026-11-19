@@ -129,4 +129,5 @@
                (:file "hex")
                (:file "web")
                (:file "irc")
-               (:file "games")))
+               (:file "games")
+               (:file "live")))

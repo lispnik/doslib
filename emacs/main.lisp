@@ -55,6 +55,7 @@ command that takes the argument itself (its TAKES-PREFIX property)."
   (setf *window* (make-win :buf (find-buf "*scratch*")) *windows* (list *window*) *buf* (win-buf *window*)
         *message* nil *unread* '() *defining-macro* nil)
   (layout-windows)
+  (reset-display)
   (video-mode 3)
   (handler-case (when (probe-file "emacsrc.lsp")
                   (let ((*package* *repl-package*)) (load "emacsrc.lsp")))
@@ -68,6 +69,7 @@ command that takes the argument itself (its TAKES-PREFIX property)."
         (multiple-value-bind (command keys) (let ((*idle* t)) (read-command))
           (setf *message* nil)
           (run-command command keys)))))
+  (when *leave-display* (funcall *leave-display*))
   (video-mode 3)
   (values))
 (push (lambda (file) (emacs file) t) sb-ext:*ed-functions*)     ; (ed "file") comes here

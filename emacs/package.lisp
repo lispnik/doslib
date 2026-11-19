@@ -40,7 +40,7 @@
           #:find-buf #:nlines #:line-text #:current-line #:point-line
           #:point-col #:goto #:split-lines #:vector-insert #:vector-delete
           #:insert-at #:text-between #:delete-between #:insert #:buffer-string
-          #:*screen* #:*attrs* #:put-string #:set-cursor #:whitespace-p
+          #:*screen* #:*flush-screen* #:*place-cursor* #:*leave-display* #:reset-display #:*attrs* #:put-string #:set-cursor #:whitespace-p
           #:delimiter-p #:*highlight-words* #:lisp-attributes #:region-bounds
           #:mode-name #:visual-col #:draw-window #:draw-echo #:redisplay
           #:extended-key #:mode-hook #:buffer-precious-p #:*attrs* #:*idle-hooks* #:add-idle-hook #:remove-idle-hook #:read-raw-key #:read-key #:*global-map* #:mode-map
