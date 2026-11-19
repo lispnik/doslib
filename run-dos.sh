@@ -18,6 +18,14 @@
 #   ./run-dos.sh utm        make vm/SBCL-DOS.utm, the same machine for the UTM
 #                           app (https://mac.getutm.app), and open it there
 #   ./run-dos.sh utm update | build | put FILE.. | get FILE.. | ls | setup
+#   ./run-dos.sh macbox     make the same machine for 86Box, as MacBox
+#                           (https://github.com/Moonif/MacBox) keeps them:
+#                           ~/MacBox/SBCL on FreeDOS, a Pentium II with a VGA
+#                           and, beside it, a Hercules monochrome card -- the
+#                           two-monitor PC that the editor's M-x live is for.
+#                           Then start it from MacBox.  The first time, its
+#                           BIOS stops at "CMOS checksum error": press F1.
+#   ./run-dos.sh macbox update | build | put FILE.. | get FILE.. | ls | setup
 #                           the commands above, for the UTM machine's disks
 #                           (the UTM machine has its own copies of the disks)
 #
@@ -73,6 +81,16 @@ if [ "$1" = utm ]; then
     boot=$bundle/Data/boot.img
     data=$bundle/Data/data.img
 fi
+# "macbox" as the first word: work on the 86Box machine's disks
+macbox=
+macdir=${MACBOX_DIR:-$HOME/MacBox}/SBCL\ on\ FreeDOS
+macdir=`eval echo "$macdir"`
+if [ "$1" = macbox ]; then
+    macbox=yes; shift
+    mkdir -p "$macdir/disks"
+    boot=$macdir/disks/boot.img
+    data=$macdir/disks/data.img
+fi
 MTOOLSRC=$vm/mtoolsrc; MTOOLS_SKIP_CHECK=1; export MTOOLSRC MTOOLS_SKIP_CHECK
 # The DOS machine's clock runs in UTC, and file times on its disks should
 # agree with it: otherwise a source file copied in looks hours older than
@@ -80,7 +98,10 @@ MTOOLSRC=$vm/mtoolsrc; MTOOLS_SKIP_CHECK=1; export MTOOLSRC MTOOLS_SKIP_CHECK
 TZ=UTC; export TZ
 printf 'drive c: file="%s" partition=1\ndrive d: file="%s" partition=1\n' "$boot" "$data" > "$MTOOLSRC"
 
-running() { pgrep -f "$data" > /dev/null 2>&1; }
+running() {
+    pgrep -f "$data" > /dev/null 2>&1 && return 0
+    [ -n "$macbox" ] && pgrep -f "86Box.*SBCL on FreeDOS" > /dev/null 2>&1
+}
 need_stopped() {
     if running; then echo "run-dos.sh: shut the DOS machine down first" >&2; exit 1; fi
 }
@@ -415,9 +436,61 @@ make_utm_config() {
 EOF
 }
 
+# 86Box's description of the machine.  86Box rewrites this file with the
+# settings made in its own window, so it is written only if there is none.
+make_macbox_config() {
+    [ -f "$macdir/86box.cfg" ] && return 0
+    cat > "$macdir/86box.cfg" <<EOF
+[Machine]
+machine = p2bls
+cpu_family = pentium2_deschutes
+cpu_speed = 400000000
+cpu_multi = 4
+cpu_use_dynarec = 1
+mem_size = 524288
+time_sync = utc
+
+[Input devices]
+keyboard_type = keyboard_ps2
+mouse_type = ps2
+
+[Video]
+gfxcard = cl_gd5446_pci
+gfxcard_2 = hercules
+
+[Sound]
+sndcard = sb16
+
+[Network]
+net_01_card = pcnetpci
+net_01_net_type = slirp
+net_01_link = 0
+
+[Hard disks]
+hdd_01_fn = disks/boot.img
+hdd_01_ide_channel = 0:0
+hdd_01_parameters = 63, 16, 65, 0, ide
+hdd_02_fn = disks/data.img
+hdd_02_ide_channel = 0:1
+hdd_02_parameters = 63, 16, $((disk_mb * 2048 / 1008)), 0, ide
+
+[Floppy and CD-ROM drives]
+fdd_01_type = 35_2hd
+fdd_02_type = none
+EOF
+}
+
 command=${1:-run}
 if [ -n "$utm" ] && [ "$command" = run ]; then command=utm-open; fi
+if [ -n "$macbox" ] && [ "$command" = run ]; then command=macbox-open; fi
 case "$command" in
+    macbox-open)
+        need_stopped
+        if [ ! -f "$boot" ] || [ ! -f "$data" ]; then make_boot; make_data; copy_files; build; fi
+        make_macbox_config
+        echo "the machine is in $macdir; start \"SBCL on FreeDOS\" from MacBox"
+        echo "(the first time, press F1 when its BIOS reports a CMOS checksum error)"
+        open -a MacBox ;;
     utm-open)
         if [ ! -f "$boot" ] || [ ! -f "$data" ]; then make_boot; make_data; copy_files; build; fi
         make_utm_config
@@ -425,7 +498,7 @@ case "$command" in
         open "$bundle" ;;
     setup)
         need_stopped; make_boot; make_data; copy_files
-        echo "now run:  $0 ${utm:+utm }build" ;;
+        echo "now run:  $0 ${utm:+utm }${macbox:+macbox }build" ;;
     build)
         need_stopped; [ -f "$data" ] || { echo "run-dos.sh: nothing set up yet" >&2; exit 1; }
         build ;;
