@@ -63,18 +63,19 @@
   (sb-unix:unix-simple-poll (socket-file-descriptor socket) :input 0))
 (defun evaluate (text)
   "Evaluate the first form in TEXT for the remote side; returns what is left of TEXT."
-  (multiple-value-bind (form end)
-      (handler-case (read-from-string text)
-        (end-of-file () (return-from evaluate text))       ; not all here yet
-        (error (e) (say "can't read that: ~A~%DOS> " e) (return-from evaluate "")))
-    (status-line (string-trim " " (substitute #\Space #\Newline (subseq text 0 end))))
-    (handler-case
-        (let ((*standard-output* *stream*) (*error-output* *stream*)   ; warnings too
-              (*package* (find-package '#:doslib-examples.remote)))
-          (say "~{~S~%~}" (multiple-value-list (eval form))))
-      (error (e) (say "~A: ~A~%" (type-of e) e)))
-    (say "DOS> ")
-    (string-left-trim '(#\Space #\Newline) (subseq text end))))
+  ;; (read here as well as evaluated here: PIXEL and QUIT-DEMO are this package's)
+  (let ((*package* (find-package '#:doslib-examples.remote)))
+    (multiple-value-bind (form end)
+        (handler-case (read-from-string text)
+          (end-of-file () (return-from evaluate text))     ; not all here yet
+          (error (e) (say "can't read that: ~A~%DOS> " e) (return-from evaluate "")))
+      (status-line (string-trim " " (substitute #\Space #\Newline (subseq text 0 end))))
+      (handler-case
+          (let ((*standard-output* *stream*) (*error-output* *stream*))   ; warnings too
+            (say "~{~S~%~}" (multiple-value-list (eval form))))
+        (error (e) (say "~A: ~A~%" (type-of e) e)))
+      (say "DOS> ")
+      (string-left-trim '(#\Space #\Newline) (subseq text end)))))
 (defun poll-network ()
   (when (and (null *client*) (ready-p *listener*))
     (setf *client* (socket-accept *listener*)

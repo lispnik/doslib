@@ -47,7 +47,13 @@
   ;; went in -- so the table is looked at first.
   (if (zerop (peek16 (+ #x408 (* 2 printer))))
       nil
-      (hi (int86 #x17 :ax #x0200 :dx printer))))
+      ;; A printer is busy for a moment after every character it is sent,
+      ;; so "busy" and nothing else is believed only once it has lasted a second.
+      (loop repeat 19
+            for status = (hi (int86 #x17 :ax #x0200 :dx printer))
+            while (= (logand status #xB9) #x10)
+            do (wait-tick)
+            finally (return status))))
 
 (defun status-text (status)
   "The bits of a printer status byte, in words."

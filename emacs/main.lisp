@@ -61,14 +61,16 @@ command that takes the argument itself (its TAKES-PREFIX property)."
                   (let ((*package* *repl-package*)) (load "emacsrc.lsp")))
     (error (e) (message "Error in EMACSRC.LSP: ~A" e)))
   (when file (visit (namestring file)))
-  (catch 'exit-editor
-    (loop
-      (handler-case (redisplay) (error (e) (draw-echo (format nil "Redisplay: ~A" e))))
-      (setf *macro-mark* (length *macro-keys*))
-      (let ((*prefix-argument* (let ((*idle* t)) (read-prefix))))
-        (multiple-value-bind (command keys) (let ((*idle* t)) (read-command))
-          (setf *message* nil)
-          (run-command command keys)))))
+  ;; C-c is a key here, and must not be DOS's signal to end the program
+  (without-break-checking
+    (catch 'exit-editor
+      (loop
+        (handler-case (redisplay) (error (e) (draw-echo (format nil "Redisplay: ~A" e))))
+        (setf *macro-mark* (length *macro-keys*))
+        (let ((*prefix-argument* (let ((*idle* t)) (read-prefix))))
+          (multiple-value-bind (command keys) (let ((*idle* t)) (read-command))
+            (setf *message* nil)
+            (run-command command keys))))))
   (when *leave-display* (funcall *leave-display*))
   (video-mode 3)
   (values))

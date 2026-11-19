@@ -40,7 +40,7 @@ load what you want:
 |---|---|
 | `machine.lisp` | `machine-code`, `int86` (software interrupts), `lo`, `hi`, `word16` |
 | `ports.lisp` | `inb`, `outb`, `inl`, `outl` |
-| `dos.lisp` | `real-int` (real-mode interrupts through DPMI), `dos-alloc`, `linear` |
+| `dos.lisp` | `real-int` (real-mode interrupts through DPMI), `dos-alloc`, `linear`, `without-break-checking` (Ctrl-C as a key) |
 | `cpuid.lisp` | `cpuid` |
 | `memory.lisp` | `peek`, `peek16`, `peek32` |
 | `interrupts.lisp` | `get-vector`, `set-vector`, `code-selector`, `data-selector` |
@@ -143,6 +143,30 @@ prompt, `demo` lists the examples, `demo plasma` runs one, and `emacs`
 starts the editor. The comments at the top of the script say what it
 needs: QEMU, mtools, a FreeDOS image, a packet driver, and SBCL built for
 DOS.
+
+## Tests
+
+`tests/run.py` runs the regression tests, on DOS: it boots a copy of the
+launcher's disks in QEMU without a window, types at the machine and reads
+its screen.
+
+```
+./run-dos.sh update && ./run-dos.sh build     # the tests run what was last built
+tests/run.py                                  # everything: about ten minutes
+tests/run.py unit fire emacs-edit             # some of it
+tests/run.py --list
+```
+
+| Kind | What it does |
+|---|---|
+| `unit` | `tests/unit.lisp`, loaded into Lisp on the DOS machine: the library, function by function |
+| `example` | Starts each example, checks what it shows (text, or the video mode and that something was drawn), operates it where that is cheap, and leaves it; the network examples talk to servers the runner starts on this computer |
+| `dos` | Programs typed at the DOS prompt: `DEMO`, a saved program, and `EMACS.EXE` driven through its keys, with the files it saved compared afterwards |
+
+The tests are listed in `tests/cases.py`; `tests/run.py --look NAME` runs
+an example and prints what it puts on the screen, which is how to start
+a test for a new one.  The screen of a test that fails is kept in the
+launcher's `vm/test` directory.  It needs QEMU, mtools and Python 3.
 
 ## Quicklisp
 
