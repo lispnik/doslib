@@ -53,6 +53,7 @@ load what you want:
 | `sound.lisp` | `speaker-on`, `speaker-off`, `speaker-beep`: the PC speaker |
 | `mouse.lisp` | `mouse-init`, `mouse-position`, `mouse-cell`, `mouse-pixel`, `mouse-show`, `mouse-hide`: the mouse driver |
 | `disk.lisp` | `dos-read-sectors`, `bios-read-sectors`: disks, a sector at a time |
+| `dma.lisp` | `dma-start`, `dma-stop`, `dma-address`, `dma-count`, `with-dma-memory`: the DMA controllers |
 | `pci.lisp` | `pci-read`, `pci-write`, `pci-devices`: PCI configuration space |
 | `serial.lisp` | `serial-open`, `serial-read-byte`, `serial-write-string`: serial ports, polled |
 | `init.lisp` | `doslib-init`, run at load and whenever a saved core starts |
@@ -99,16 +100,26 @@ Each example is one file with a package of its own,
 
 | Category | Examples |
 |---|---|
-| `graphics/` | bmpview fire font gcviz lsystem mandel modex paint plasma raycast raytrace sprite stars textfx turtle vesa wire3d |
-| `system/` | asm asmdsl calc diskinfo dosinfo fatview intvec ivt mcbwalk memmap pciscan ports printer probes serial sysinfo |
+| `graphics/` | blit bmpview compiled copper dirty fire flip font gcviz latch lfb lsystem mandel modex paint plasma raycast raytrace scroll sprite stars textfx turtle vesa wire3d |
+| `system/` | asm asmdsl calc diskinfo dosinfo fatview floppy intvec ivt mcbwalk memmap pciscan ports printer probes serial step sysinfo timer |
 | `lisp/` | bench hotfix life live restarts resume shell snake special windows |
-| `sound/` | adlib blaster speaker |
+| `sound/` | adlib blaster dmascope modplay record speaker |
 | `network/` | browse files irc netpong ntp remote websrv wget |
 
 `data/` holds files the examples read; `support/` holds the host-side
 half of the serial example.
 
-`blaster` wants a Sound Blaster (the launcher's QEMU machine has an
+Some show one hardware technique each:
+
+| Technique | Examples |
+|---|---|
+| Blitting | `blit` (a back buffer), `dirty` (dirty rectangles), `compiled` (sprites as machine code) |
+| Mode X | `flip` (page flipping), `scroll` (hardware scrolling), `latch` (copies inside video memory) |
+| Other video | `lfb` (the VESA linear framebuffer), `copper` (a palette entry changed on every scanline) |
+| DMA | `blaster` (playing), `dmascope` (the controller's registers, live), `record`, `modplay` (a MOD player), `floppy` (a sector without the BIOS) |
+| Interrupts and timing | `timer` (the timer chip at 1000 Hz), `step` (single-stepping machine code) |
+
+`blaster`, `dmascope`, `record` and `modplay` want a Sound Blaster (the launcher's QEMU machine has an
 `sb16`); `sprite`, `paint` and `windows` want a mouse driver.
 
 To add one, write a file with a `main` function, register it with

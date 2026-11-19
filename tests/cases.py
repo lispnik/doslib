@@ -204,6 +204,18 @@ def all_cases():
 
         # ---- sound (the machine's cards are silent)
         example('adlib', ('see', 'AdLib card found'), ('see', 'Playing jacques'), ('see', 'C4 D4 E4 C4')),
+        # ---- DMA.  (QEMU's Sound Blaster does not record, and the test machine's drive A: is empty.)
+        example('dmascope', ('gfx', 0x13, 6), ('key', 'spc'), ('wait', 1), ('key', 'spc'), ('wait', 1)),
+        example('record', ('see', 'does not record'), leave=None),
+        example('modplay', ('see', 'mixing takes'), ('wait', 3)),
+        example('floppy', ('see', 'no disk in A:'), leave=None),
+        example('timer', ('see', 'Against the clock chip'), ('key', 'spc'), ('wait', 1)),
+        example('blaster-16', ('see', 'DMA channel 5', 150), ('see', 'interrupts handled', 90),
+                example='blaster', args='"16"', leave=None, patience=200),
+        # the debugger: run two routines to their ends, a step at a time underneath
+        example('step', ('see', 'gcd:'), ('key', 'spc', 'spc'), ('see', '2 instructions done'),
+                ('key', 'r'), ('see', 'EAX is 21'), ('key', 'n', 'n'), ('see', 'fact:'),
+                ('key', 'r'), ('see', 'EAX is 120')),
         example('blaster', ('see', 'DSP version'), ('see', 'interrupts handled', 60), leave=None),
         example('speaker', ('see', 'Playing ode'), ('see', 'E4 E4 F4 G4')),
 
@@ -233,6 +245,15 @@ def all_cases():
         example('ntp', ('wait', 20), internet=True),
         example('browse-gopher', ('see', 'Floodgap', 90), example='browse', internet=True, leave=('esc',)),
 
+        # ---- blitting, Mode X, the linear framebuffer, raster effects
+        example('blit', ('gfx', 0x13, 20), ('key', 'spc'), ('wait', 1), ('key', 'spc'), ('wait', 1)),
+        example('dirty', ('gfx', 0x13, 20), ('key', 'spc'), ('wait', 1), ('key', 'spc'), ('wait', 1)),
+        example('compiled', ('gfx', 0x13, 5), ('wait', 2)),
+        example('flip', ('gfx', 0x13, 8), ('key', 'spc'), ('wait', 1), ('key', 'spc'), ('wait', 1)),
+        example('scroll', ('gfx', 0x13, 12), ('key', 'right'), ('key', 'left'), ('key', 'spc'), ('wait', 1)),
+        example('latch', ('gfx', 0x13, 40), ('key', 'spc'), ('wait', 1)),
+        example('lfb', ('gfx', None, 50), ('key', 'spc'), ('wait', 1)),
+        example('copper', ('gfx', 0x13, 50), ('key', 'f'), ('wait', 1)),
         # the sprite editor: Space paints the cell under the pointer (the middle one, to
         # begin with) in white, and so does the left button; S saves what was drawn
         example('sprite', ('gfx', 0x13, 20), ('key', 'c'), ('wait', 1), ('key', 'spc'), ('wait', 1),
@@ -253,6 +274,9 @@ def all_cases():
         # Ctrl-C reaches Lisp when DOS notices it, which is when the program next calls DOS
         dos('interrupt-ctrl-c', ('line', 'sbcl --noinform --eval "(loop (print 1))"'), ('wait', 6), ('key', 'ctrl-c'),
             ('see', 'Interactive interrupt'), ('line', '(sb-ext:exit)')),
+        # Ctrl-Break while SBCL is starting is dropped: the program runs as if nothing was pressed
+        dos('interrupt-startup', ('line', 'sbcl --noinform --eval "(print (+ 40 2))" --quit'),
+            ('hold', 'ctrl-pause'), ('wait', 1), ('hold', 'ctrl-alt-shift'), ('see', '42')),
         dos('demo-arguments', ('line', 'demo speaker ?'), ('see', 'Tunes: ')),
         dos('demo', ('line', 'demo plasma'), ('gfx', 0x13, 100), ('key', 'esc')),
         dos('demo-menu', ('line', 'demo'), ('see', 'Example to run'), ('line', 'asm'),

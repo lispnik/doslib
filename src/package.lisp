@@ -44,6 +44,8 @@ ALIEN-FUNCALL.")
           #:disk-error #:disk-error-drive #:disk-error-sector #:disk-error-code
           #:disk-error-reason #:current-drive #:drive-number #:drive-letter
           #:drive-read-method #:dos-read-sectors #:bios-read-sectors
+          ;; DMA
+          #:dma-start #:dma-stop #:dma-address #:dma-count #:dma-fit #:with-dma-memory
           ;; PCI
           #:pci-read #:pci-write #:pci-byte #:pci-word #:pci-present-p #:pci-devices
           ;; serial ports

@@ -432,3 +432,17 @@
   (is= :interrupted (catching-interrupt (signal 'sb-sys:interactive-interrupt)))
   (is (subtypep 'interrupt 'condition))
   (is (integerp (interrupt-count))))
+
+(deftest dma
+  (is= #x12340 (dma-fit #x12340 4096))                  ; no boundary in the way
+  (is= #x20000 (dma-fit #x1F800 4096))                  ; one: start after it
+  (is= #x1F000 (dma-fit #x1F000 4096))                  ; ending exactly on it is fine
+  (with-dma-memory (address 2048)
+    (is (< 0 address #xA0000))
+    (is (<= (+ (logand address #xFFFF) 2048) #x10000))
+    ;; channel 3 has no device here: what is set can be read back, and nothing moves
+    (unwind-protect
+         (progn (dma-start 3 address 2048 :direction :to-memory :repeat nil)
+                (is= (logand address #xFFFF) (dma-address 3))
+                (is= 2047 (dma-count 3)))
+      (dma-stop 3))))

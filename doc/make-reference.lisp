@@ -26,7 +26,7 @@
   ;; (the editor's commands say what they do; its other names are listed bare)
   '(("The library" "DOSLIB" "src/package.lisp" "src/"
      ("machine" "ports" "dos" "cpuid" "memory" "interrupts" "hotkey" "video" "input" "text"
-      "critical" "dialog" "sound" "mouse" "disk" "pci" "serial" "init"))
+      "critical" "dialog" "sound" "mouse" "disk" "dma" "pci" "serial" "init"))
     ("The examples" "DOSLIB-EXAMPLES" "examples/package.lisp" "examples/" ("package"))
     ("The editor" "DOSLIB-EMACS" "emacs/package.lisp" "emacs/"
      ("buffers" "screen" "keyboard" "keys" "keymaps" "minibuffer" "movement" "editing" "search"

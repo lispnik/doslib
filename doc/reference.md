@@ -404,6 +404,26 @@ COUNT sectors of a DOS drive (a number, 0 for A:, or a letter, or NIL for the cu
 **`bios-read-sectors`** `drive sector &optional (count 1)` — Function  
 COUNT 512-byte sectors of a whole disk, through the BIOS (interrupt 13h, function 42h): DRIVE is the BIOS's number, #x80 for the first hard disk, and SECTOR counts from the very start of the disk.
 
+### `src/dma.lisp`: The DMA controllers: memory handed to a device, or filled by one,
+
+**`dma-start`** `channel address length &key (direction :to-device) (repeat t)` — Function  
+Have DMA channel CHANNEL move LENGTH bytes at ADDRESS: to its device (DIRECTION :TO-DEVICE, playing) or from it into memory (:TO-MEMORY, recording, reading a disk).  With REPEAT it starts again at ADDRESS each time it has moved them all; without, it stops there.
+
+**`dma-stop`** `channel` — Function  
+Mask DMA channel CHANNEL: it answers its device no more.
+
+**`dma-address`** `channel` — Function  
+The channel's address register as it is now: the low 16 bits of where it will move the next byte (for channels 5 to 7, the next word, counted in words).
+
+**`dma-count`** `channel` — Function  
+The channel's count register as it is now: the bytes (for channels 5 to 7, the words) it has still to move, less one.  FFFFh: it has moved them all.
+
+**`dma-fit`** `address length` — Function  
+The first address at or after ADDRESS where LENGTH bytes (65536 at most) lie without a 64K boundary among them.  Memory of twice LENGTH has room.
+
+**`with-dma-memory`** `(address length) &body body` — Macro  
+Run BODY with ADDRESS bound to the address of LENGTH bytes of DOS memory that a DMA channel can be pointed at, freed afterwards.
+
 ### `src/pci.lisp`: PCI configuration space, by the ports CF8h and CFCh.
 
 **`pci-read`** `bus device function register` — Function  
