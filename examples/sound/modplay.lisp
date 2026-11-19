@@ -651,64 +651,9 @@
       (put-number 54 24 busy 3 7) (put-string 57 24 "% of the time" 8)
       (put-number 72 24 late 3 (if (plusp late) 12 7)) (put-string 76 24 "late" 8))))
 
-;;; ---- the card, as in the blaster example
-(defvar *base* #x220 "The card's first port.")
-(defvar *irq* 5)
-(defvar *dma* 1 "The 8-bit DMA channel.")
-
-(defun read-settings ()
-  "Take the port, interrupt and DMA channel from BLASTER=A220 I5 D1, if it is set."
-  (setf *base* #x220 *irq* 5 *dma* 1)
-  (let ((text (posix-getenv "BLASTER")))
-    (when text
-      (loop with start = 0
-            for end = (or (position #\Space text :start start) (length text))
-            do (when (> end (1+ start))
-                 (let ((number (subseq text (1+ start) end)))
-                   (case (char-upcase (char text start))
-                     (#\A (setf *base* (or (parse-integer number :radix 16 :junk-allowed t)
-                                           *base*)))
-                     (#\I (setf *irq* (or (parse-integer number :junk-allowed t) *irq*)))
-                     (#\D (setf *dma* (or (parse-integer number :junk-allowed t) *dma*))))))
-               (when (>= end (length text)) (return))
-               (setf start (1+ end))))))
-
-(defun dsp-write (byte)
-  (loop repeat 100000 while (logbitp 7 (inb (+ *base* #xC))))
-  (outb (+ *base* #xC) byte))
-(defun dsp-read ()
-  (loop repeat 100000 until (logbitp 7 (inb (+ *base* #xE))))
-  (inb (+ *base* #xA)))
-(defun dsp-reset ()
-  "Reset the card.  True if one answered."
-  (outb (+ *base* 6) 1)
-  (dotimes (i 200) (inb (+ *base* 6)))
-  (outb (+ *base* 6) 0)
-  (loop repeat 2000
-        thereis (and (logbitp 7 (inb (+ *base* #xE)))
-                     (= (inb (+ *base* #xA)) #xAA))))
-(defun dsp-version ()
-  (dsp-write #xE1)
-  (let* ((major (dsp-read)) (minor (dsp-read)))
-    (values major minor)))
-
-;;; (The DMA controller is the library's: DMA-START, DMA-STOP, DMA-COUNT.)
-
-(defvar *counter* nil "Four bytes the handler counts interrupts in.")
-(defun handler-code ()
-  "The interrupt handler: acknowledge, count, return."
-  (let ((ds (data-selector)) (acknowledge (+ *base* #xE)))
-    (machine-code #x50 #x52 #x1E                        ; push eax / push edx / push ds
-                  #x66 #xB8 (lo ds) (hi ds)             ; mov ax, our data selector
-                  #x8E #xD8                             ; mov ds, ax
-                  #xBA (lo acknowledge) (hi acknowledge) 0 0    ; mov edx, base+0Eh
-                  #xEC                                  ; in al, dx      the card: seen
-                  #xFF #x05 (lo (sap-int *counter*)) (hi (sap-int *counter*))
-                  (ldb (byte 8 16) (sap-int *counter*)) (ldb (byte 8 24) (sap-int *counter*))
-                                                        ; inc dword [counter]
-                  #xB0 #x20 #xE6 #x20                   ; mov al,20h / out 20h,al
-                  #x1F #x5A #x58 #xCF)))                ; pop ds / pop edx / pop eax / iretd
-(defun interrupts () (sap-ref-32 *counter* 0))
+;;; ---- the card is the library's (src/blaster.lisp): where it is, commands to its
+;;; processor (BLASTER-WRITE), and its interrupt, counted (WITH-BLASTER-INTERRUPT,
+;;; BLASTER-INTERRUPTS).  So is the DMA controller: DMA-START, DMA-STOP, DMA-COUNT.
 
 ;;; ---- playing
 (defconstant +block+ 1024 "Samples between interrupts.")
@@ -728,14 +673,11 @@
 bytes allocated meanwhile, seconds of song made, times it began again, the
 rate used and the samples a second the mixer can make; or NIL if there is no
 card that can."
-  (read-settings)
-  (unless (and (<= 0 *dma* 3) (/= *dma* 2) (<= 2 *irq* 7) (dsp-reset))
+  (unless (blaster-present-p)
     (format t "~&No Sound Blaster answered at port ~Xh.  (QEMU: -device sb16; ~
-               SET BLASTER=A220 I5 D1 says where a card is.)~%" *base*)
+               SET BLASTER=A220 I5 D1 says where a card is.)~%" *blaster-port*)
     (return-from play nil))
-  (unless *counter* (setf *counter* (alien-sap (make-alien (unsigned 32) 1))))
-  (setf (sap-ref-32 *counter* 0) 0)
-  (let ((major (dsp-version)))
+  (let ((major (blaster-version)))
     (when (< major 2)
       (format t "~&The card is too old for this: auto-initialized DMA came with DSP version 2.~%")
       (return-from play nil))
@@ -747,12 +689,10 @@ card that can."
              (rate (if (and (> rate 11025) (< capacity (* 2 rate))) 11025 rate))
              (busy (round (* 100 rate) (max 1 capacity)))
              (player (new-player song rate))
-             (vector (+ 8 *irq*))
-             (old-mask (inb #x21))
              (handled 0) (late 0) (tick 0)
              (began (ticks)) (allocated 0))
         (declare (fixnum handled late busy tick))
-        (multiple-value-bind (old-selector old-offset) (get-vector vector)
+        (with-blaster-interrupt ()
           (unwind-protect
                (progn
                  (hide-text-cursor)
@@ -760,16 +700,15 @@ card that can."
                  (mix-block player (int-sap start) +block+)
                  (mix-block player (int-sap (+ start +block+)) +block+)
                  (draw-state player 0 0 busy)
-                 (set-vector vector (code-selector) (sap-int (handler-code)))
-                 (outb #x21 (logandc2 old-mask (ash 1 *irq*)))      ; let the interrupt through
-                 (dma-start *dma* start (* 2 +block+))
-                 (dsp-write #xD1)                                   ; speaker on
+                 (dma-start *blaster-dma* start (* 2 +block+))
+                 (blaster-write #xD1)                               ; speaker on
                  (cond ((>= major 4)                                ; the rate itself
-                        (dsp-write #x41) (dsp-write (hi rate)) (dsp-write (lo rate)))
+                        (blaster-write #x41) (blaster-write (hi rate)) (blaster-write (lo rate)))
                        (t                                           ; or as near as 256 steps go
-                        (dsp-write #x40) (dsp-write (- 256 (round 1000000 rate)))))
-                 (dsp-write #x48) (dsp-write (lo (1- +block+))) (dsp-write (hi (1- +block+)))
-                 (dsp-write #x1C)                                   ; go: 8 bits, auto-initialize
+                        (blaster-write #x40) (blaster-write (- 256 (round 1000000 rate)))))
+                 (blaster-write #x48)
+                 (blaster-write (lo (1- +block+))) (blaster-write (hi (1- +block+)))
+                 (blaster-write #x1C)                               ; go: 8 bits, auto-initialize
                  (setf began (ticks) tick began
                        allocated (get-bytes-consed))
                  ;; An interrupt means a block has been played and is free for
@@ -778,14 +717,16 @@ card that can."
                  ;; the DMA controller where the card is now: the count
                  ;; register goes down from two blocks, less one, to nothing.
                  (loop
-                   (let ((raised (interrupts)))
+                   (let ((raised (blaster-interrupts)))
                      (declare (fixnum raised))
                      (when (/= handled raised)
                        (when (> (- raised handled) 1)   ; two since we looked: too slow
                          (incf late))
                        (setf handled raised)
                        (mix-block player
-                                  (int-sap (+ start (if (>= (dma-count *dma*) +block+) +block+ 0)))
+                                  (int-sap (+ start (if (>= (dma-count *blaster-dma*) +block+)
+                                                        +block+
+                                                        0)))
                                   +block+)
                        (draw-state player (truncate (* 10 (- (ticks) began)) 182) late busy)))
                    (let ((now (ticks)))                 ; look for a key 18 times a second
@@ -794,12 +735,9 @@ card that can."
                        (setf tick now)
                        (when (key-pressed-p) (wait-key) (return)))))
                  (setf allocated (- (get-bytes-consed) allocated)))
-            (dsp-write #xD0) (dsp-write #xDA) (dsp-write #xD3)      ; pause, end, speaker off
-            (dma-stop *dma*)
-            (outb #x21 (logior (logand (inb #x21) (lognot (ash 1 *irq*)))
-                               (logand old-mask (ash 1 *irq*))))    ; the mask bit as it was
-            (set-vector vector old-selector old-offset)
-            (dsp-reset)
+            ;; pause, end, speaker off
+            (blaster-write #xD0) (blaster-write #xDA) (blaster-write #xD3)
+            (dma-stop *blaster-dma*)
             (text-fill 0 0 80 25 7) (text-cursor 0 0) (show-text-cursor)))
         (values handled late (/ (- (ticks) began) 18.2) allocated
                 (/ (pl-mixed player) (float rate)) (pl-repeats player) rate capacity)))))

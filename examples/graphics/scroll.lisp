@@ -55,50 +55,20 @@
 (defconstant +limit+ (- (* 16 +map-width+) 320)) ; the furthest the picture can scroll
 
 ;;; ---- the mode
-(defun sequencer (index value) (outb #x3C4 index) (outb #x3C5 value))
-(defun crtc (index value) (outb #x3D4 index) (outb #x3D5 value))
-(defun attribute (index value)
-  (inb #x3DA)                           ; reading 3DAh makes the next write to 3C0h an index
-  (outb #x3C0 (logior index #x20))      ; bit 5 keeps the display on
-  (outb #x3C0 value))
-(defun mode-x ()
-  "320x240 in 256 colours, four planes: mode 13h, unchained, with 480-line timing."
-  (video-mode #x13)
-  (sequencer 4 #x06)                    ; unchain the four planes
-  (sequencer 0 #x01) (outb #x3C2 #xE3) (sequencer 0 #x03)   ; 480-line timing
-  (outb #x3D4 #x11) (outb #x3D5 (logand (inb #x3D5) #x7F))  ; unlock CRTC 0-7
-  (loop for (index value) in '((#x06 #x0D) (#x07 #x3E) (#x09 #x41) (#x10 #xEA) (#x11 #xAC)
-                               (#x12 #xDF) (#x14 #x00) (#x15 #xE7) (#x16 #x06) (#x17 #xE3))
-        do (crtc index value))
-  (sequencer 2 #x0F)                    ; all planes: clear all of memory
-  (dotimes (i 65536) (setf (sap-ref-8 *vga* i) 0)))
+;;; (MODE-X, 320x240 in four planes, is the library's, with the writers of the VGA's
+;;; registers used below -- VGA-CRTC, VGA-ATTRIBUTE, VGA-PLANES, VGA-DISPLAY-START:
+;;; src/modex.lisp.)
 (defun scrolling-mode ()
   (mode-x)
-  (crtc #x13 (floor +row-bytes+ 2))     ; the offset register counts in pairs of addresses
+  (vga-crtc #x13 (floor +row-bytes+ 2)) ; the offset register counts in pairs of addresses
   ;; Split the screen after scan line 447 (pixel row 223: every row is two scan lines).
   ;; Line compare has ten bits: 0-7 in register 18h, 8 in 07h bit 4, 9 in 09h bit 6.
-  (crtc #x18 #xBF) (crtc #x07 #x3E) (crtc #x09 #x01)
-  (attribute #x10 #x61))                ; 256 colours, and no panning below the split
+  (vga-crtc #x18 #xBF) (vga-crtc #x07 #x3E) (vga-crtc #x09 #x01)
+  (vga-attribute #x10 #x61))            ; 256 colours, and no panning below the split
 ;;; The vertical retrace is the clock: 60 frames a second in this mode.  But some
-;;; emulators (QEMU is one) report a retrace whenever they are asked, so the timer chip
-;;; is consulted too.  It counts down from 65,536 in each tick of 55 ms -- or, in its
-;;; mode 3, which many a BIOS sets, twice, by twos, with its output high the first time
-;;; and low the second.  A read-back command (C2h to port 43h) gives the output (bit 7)
-;;; and the mode (bits 1-3) in the first byte read and the count in the next two, which
-;;; is enough to tell the four quarters of a tick apart, and no frame begins in the same
-;;; quarter as the one before: at most 73 frames a second, and a monitor's own rate
-;;; where the retrace is real.
-(defvar *quarter* 0)
-(defun timer-quarter ()
-  (outb #x43 #xC2)
-  (let ((status (inb #x40)) (low (inb #x40)) (high (inb #x40)))
-    (declare (ignore low))
-    (if (= (logand status #x06) #x06)   ; mode 3
-        (+ (if (logbitp 7 status) 0 2) (if (logbitp 7 high) 0 1))
-        (ash high -6))))
-(defun wait-quarter ()
-  (loop until (/= (timer-quarter) *quarter*))
-  (setf *quarter* (timer-quarter)))
+;;; emulators (QEMU is one) report a retrace whenever they are asked, so the frames are
+;;; paced by the timer chip too, with the library's WAIT-FRAME: at most 74 a second, and
+;;; a monitor's own rate where the retrace is real.
 (defun qemu-p ()
   "Is this QEMU?  Its configuration device says so: item 0, read at port 511h."
   (outw #x510 0)
@@ -107,11 +77,10 @@
 (defun scroll-to (x)
   "Display the map from its pixel X."
   (let ((start (+ +base+ (ash x -2))) (x (if *panning* x 0)))
-    (wait-quarter)
-    (loop while (logbitp 3 (inb #x3DA)))        ; the start address is taken at the retrace:
-    (crtc #x0C (ash start -8)) (crtc #x0D (logand start #xFF)) ; set it before one,
-    (wait-retrace)
-    (attribute #x13 (* 2 (logand x 3)))))       ; and the panning, used at once, during it
+    (wait-frame)
+    (vga-display-start start)                   ; the start address is taken at the retrace:
+    (wait-retrace)                              ; set it before one,
+    (vga-attribute #x13 (* 2 (logand x 3)))))   ; and the panning, used at once, during it
 
 ;;; ---- the tiles: 16 by 16, kept a plane at a time as video memory wants them
 (defconstant +sky+ 0) (defconstant +cloud-left+ 1) (defconstant +cloud+ 2)
@@ -207,7 +176,7 @@ same every time."
   (let ((vga *vga*) (tiles *tiles*) (map *map*))
     (declare (type system-area-pointer vga) (type (simple-array (unsigned-byte 8) (*)) tiles map))
     (dotimes (plane 4)
-      (outw #x3C4 (logior 2 (ash (ash 1 plane) 8)))    ; map mask: this plane only
+      (vga-planes (ash 1 plane))        ; map mask: this plane only
       (dotimes (row +rows+)
         (let ((source (+ (* 256 (aref map (+ column (* +map-width+ row)))) (* 64 plane)))
               (target (+ +base+ (* 4 column) (* 16 +row-bytes+ row))))
@@ -219,27 +188,15 @@ same every time."
             (incf target +row-bytes+))))))
   (incf *written* (* 256 +rows+)))
 
-;;; Text: the BIOS's 8 by 8 characters, which interrupt vector 43h points to.
-(defun font-address () (linear (peek16 #x10E) (peek16 #x10C)))
-(defun draw-text (x y string colour background)
-  "STRING at X (a multiple of 4), Y of the status bar, which is at address 0."
-  (let ((font (font-address)))
-    (dotimes (plane 4)
-      (sequencer 2 (ash 1 plane))
-      (loop for character across string
-            for address from (+ (* +row-bytes+ y) (ash x -2)) by 2
-            do (dotimes (row 8)
-                 (let ((bits (peek (+ font (* 8 (char-code character)) row))))
-                   (dotimes (i 2)       ; pixel 4i+plane of the character's eight
-                     (setf (sap-ref-8 *vga* (+ address (* +row-bytes+ row) i))
-                           (if (logbitp (- 7 plane (* 4 i)) bits) colour background)))))))))
+;;; Text: the library's MODE-X-TEXT, on the status bar, which is at address 0 of rows 88
+;;; addresses apart.
 (defun draw-status (x speed rate bytes)
-  (draw-text 0 0 (format nil "~40A" (format nil "Tile ~3D of ~D  speed ~@D  ~D frames/s"
-                                            (floor x 16) +map-width+ speed rate))
-             15 0)
-  (draw-text 0 8 (format nil "~40A" (format nil "Bytes a frame: ~D  redrawing: ~D~:[  P~;~]"
-                                            bytes +redraw+ *panning*))
-             14 0))
+  (mode-x-text 0 0 (format nil "~40A" (format nil "Tile ~3D of ~D  speed ~@D  ~D frames/s"
+                                              (floor x 16) +map-width+ speed rate))
+               15 0 0 +row-bytes+)
+  (mode-x-text 0 8 (format nil "~40A" (format nil "Bytes a frame: ~D  redrawing: ~D~:[  P~;~]"
+                                              bytes +redraw+ *panning*))
+               14 0 0 +row-bytes+))
 
 (defun scroll ()
   (let ((frames 0))

@@ -12,7 +12,8 @@ ALIEN-FUNCALL.")
           #:hi #:word16 #:*inb* #:*outb* #:inb #:outb #:*inl* #:*outl* #:inl
           #:outl #:*rm* #:real-int #:dos-alloc #:linear #:break-checking
           #:without-break-checking #:*cpuid* #:cpuid
-          #:peek #:peek16 #:peek32 #:*vga* #:video-mode #:set-palette
+          #:peek #:peek16 #:peek32 #:map-physical #:unmap-physical
+          #:with-physical-memory #:*vga* #:video-mode #:set-palette
           #:rainbow-palette #:plot #:draw-line #:wait-tick #:key-pressed-p
           #:wait-key #:finish #:doslib-init
           #:code-selector #:data-selector #:bytes32 #:get-vector #:set-vector
@@ -32,7 +33,14 @@ ALIEN-FUNCALL.")
           ;; more ports
           #:inw #:outw #:cmos #:bcd
           #:ticks #:current-video-mode #:with-video-mode #:wait-retrace
-          #:vesa-set-mode #:vesa-set-bank
+          #:vesa-set-mode #:vesa-set-bank #:vesa-mode-info
+          ;; text in the graphics modes
+          #:glyph-row #:glyph-rows #:draw-glyphs #:graphics-text
+          ;; the VGA's registers, and Mode X
+          #:vga-sequencer #:vga-crtc #:vga-graphics #:vga-attribute #:vga-planes
+          #:vga-display-start #:mode-x #:mode-x-text
+          ;; time finer than the tick
+          #:timer-count #:wait-frame
           #:with-critical-errors-caught
           ;; the speaker
           #:+timer-hz+ #:speaker-on #:speaker-off #:speaker-divisor #:speaker-beep
@@ -46,6 +54,10 @@ ALIEN-FUNCALL.")
           #:drive-read-method #:dos-read-sectors #:bios-read-sectors
           ;; DMA
           #:dma-start #:dma-stop #:dma-address #:dma-count #:dma-fit #:with-dma-memory
+          ;; the Sound Blaster
+          #:*blaster-port* #:*blaster-irq* #:*blaster-dma* #:*blaster-dma16*
+          #:blaster-settings #:blaster-present-p #:blaster-reset #:blaster-write
+          #:blaster-read #:blaster-version #:blaster-interrupts #:with-blaster-interrupt
           ;; PCI
           #:pci-read #:pci-write #:pci-byte #:pci-word #:pci-present-p #:pci-devices
           ;; serial ports

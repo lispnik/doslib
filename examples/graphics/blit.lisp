@@ -45,36 +45,8 @@
 (deftype bytes () '(simple-array (unsigned-byte 8) (*)))
 (defun make-bytes (n) (make-array n :element-type '(unsigned-byte 8) :initial-element 0))
 
-;;; ---- time, finer than the BIOS's 18.2 ticks a second
-(defconstant +clocks-a-second+ 1193182)
-(defconstant +frame-clocks+ 16000)      ; a little less than a frame at 70 a second
-(defvar *clock* 0 "The last time CLOCK gave.")
-(defun clock ()
-  "The time in the timer chip's clocks, 1,193,182 to the second: the BIOS's
-count of ticks, and how far counter 0 has got through the 65,536 clocks of
-this one."
-  (loop
-    (let ((tick (ticks)))
-      (outb #x43 #xC2)                  ; read back counter 0: its status, then its count
-      (let* ((status (inb #x40)) (low (inb #x40))
-             (gone (logand (- (+ low (* 256 (inb #x40)))) #xFFFF))
-             (now (+ (* tick 65536)
-                     (if (= (logand status 6) 6)
-                         ;; mode 3, a square wave: it counts down twice a tick, by twos,
-                         ;; and its output (bit 7) is high the first time
-                         (+ (if (logbitp 7 status) 0 32768) (floor gone 2))
-                         gone))))       ; mode 2: once a tick, by ones
-        ;; The counter can start again a moment before the BIOS has counted the
-        ;; tick, and then the time seems to go back by one tick: read again.
-        (unless (or (/= tick (ticks)) (< -65537 (- now *clock*) 0))
-          (return (setf *clock* now)))))))
-(defvar *last-frame* 0)
-(defun wait-frame (&optional retrace)
-  "Wait until a frame's time has passed since the last one -- and then, if
-RETRACE, for the vertical retrace."
-  (loop while (< -1 (- (clock) *last-frame*) +frame-clocks+))
-  (when retrace (wait-retrace))
-  (setf *last-frame* (clock)))
+;;; (Time finer than the BIOS's 18.2 ticks a second, and the pace of the frames, are the
+;;; library's: TIMER-COUNT and WAIT-FRAME, src/input.lisp.)
 
 ;;; ---- the sprite
 (defun ball ()
@@ -131,23 +103,6 @@ it is empty)."
         (incf i))
       (incf at +width+))))
 
-(defun draw-text (dest x y string colour)
-  "STRING in the BIOS's 8 by 8 characters (they are in the ROM, at FFA6Eh),
-on a black bar."
-  (declare (type system-area-pointer dest) (type (unsigned-byte 16) x y) (fixnum colour)
-           (simple-string string)
-           (optimize speed (safety 0)))
-  (let ((font (int-sap #xFFA6E)))
-    (dotimes (i (min (length string) 40))
-      (let ((code (logand (char-code (char string i)) 127)))
-        (dotimes (row 8)
-          (let ((bits (sap-ref-8 font (+ (* 8 code) row)))
-                (at (+ x (* 8 i) (* +width+ (+ y row)))))
-            (declare (fixnum at))
-            (dotimes (column 8)
-              (setf (sap-ref-8 dest (+ at column))
-                    (if (logbitp (- 7 column) bits) colour 0)))))))))
-
 ;;; ---- the sprites: where each is, and which way it is going
 (defstruct (flock (:constructor %make-flock))
   (x (make-array +sprites+ :element-type 'fixnum) :type (simple-array fixnum (*)))
@@ -178,7 +133,7 @@ on a black bar."
   (sb-kernel:system-area-ub8-copy (vector-sap background) 0 dest 0 +screen-bytes+)
   (dotimes (i +sprites+)
     (blit dest sprite (aref (flock-x flock) i) (aref (flock-y flock) i)))
-  (draw-text dest 0 0 status 15))
+  (draw-glyphs dest 0 +width+ status 15))        ; the top line, on a black bar
 
 (defun status-line (buffered frames-a-second)
   (coerce (format nil "~40A" (format nil "~A ~3D frames/s  Space Esc"
@@ -189,7 +144,7 @@ on a black bar."
 (defun blit-demo ()
   (let ((background (make-background)) (buffer (make-bytes +screen-bytes+))
         (sprite (load-sprite)) (flock (make-flock))
-        (buffered t) (frames 0) (frames-a-second 0) (since (clock)) (vga *vga*))
+        (buffered t) (frames 0) (frames-a-second 0) (since (timer-count)) (vga *vga*))
     (with-video-mode (#x13)
       (background-palette)
       (let ((status (status-line buffered frames-a-second)))
@@ -210,12 +165,12 @@ on a black bar."
                    (wait-frame)
                    (draw-frame vga background sprite flock status)))
             (incf frames)
-            (let ((elapsed (- (clock) since)))
-              (when (or (>= elapsed +clocks-a-second+) (< elapsed 0))   ; a second (or midnight)
+            (let ((elapsed (- (timer-count) since)))
+              (when (or (>= elapsed +timer-hz+) (< elapsed 0))   ; a second (or midnight)
                 (when (> elapsed 0)
-                  (setf frames-a-second (round (* frames +clocks-a-second+) elapsed)
+                  (setf frames-a-second (round (* frames +timer-hz+) elapsed)
                         status (status-line buffered frames-a-second)))
-                (setf frames 0 since (clock))))))))
+                (setf frames 0 since (timer-count))))))))
     (format t "~&blit: ~D sprites, ~D frames a second ~A.~%" +sprites+ frames-a-second
             (if buffered "through the back buffer" "straight to video memory"))))
 

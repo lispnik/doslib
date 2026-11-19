@@ -41,47 +41,33 @@
 (defconstant +store+ 19200)             ; where the tiles are kept: just after the picture
 
 ;;; ---- the mode
-(defun sequencer (index value) (outb #x3C4 index) (outb #x3C5 value))
-(defun crtc (index value) (outb #x3D4 index) (outb #x3D5 value))
-(defun graphics (index value) (outb #x3CE index) (outb #x3CF value))
-(defun mode-x ()
-  "320x240 in 256 colours, four planes: mode 13h, unchained, with 480-line timing."
-  (video-mode #x13)
-  (sequencer 4 #x06)                    ; unchain the four planes
-  (sequencer 0 #x01) (outb #x3C2 #xE3) (sequencer 0 #x03)   ; 480-line timing
-  (outb #x3D4 #x11) (outb #x3D5 (logand (inb #x3D5) #x7F))  ; unlock CRTC 0-7
-  (loop for (index value) in '((#x06 #x0D) (#x07 #x3E) (#x09 #x41) (#x10 #xEA) (#x11 #xAC)
-                               (#x12 #xDF) (#x14 #x00) (#x15 #xE7) (#x16 #x06) (#x17 #xE3))
-        do (crtc index value))
-  (sequencer 2 #x0F)                    ; all planes: clear all of memory
-  (dotimes (i 65536) (setf (sap-ref-8 *vga* i) 0)))
+;;; (MODE-X, 320x240 in four planes, is the library's, with VGA-PLANES for the map mask and
+;;; VGA-GRAPHICS for the graphics controller's registers: src/modex.lisp.)
 
 ;;; ---- the tiles: in Lisp's memory, a plane at a time as video memory wants them
-(defun font-address ()                  ; the BIOS's 8 by 8 characters: interrupt vector 43h
-  (linear (peek16 #x10E) (peek16 #x10C)))
 (defvar *tiles* (make-array (* 256 +tiles+) :element-type '(unsigned-byte 8))
   "Each tile is 256 bytes: four planes of 16 rows of 4.")
-(defun tile-pixel (tile x y font)
-  "A bevelled square in one of sixteen hues of the BIOS's palette, with its number on it."
+(defun tile-pixel (tile x y)
+  "A bevelled square in one of sixteen hues of the BIOS's palette, with its number on it
+(in the BIOS's 8 by 8 characters: the library's GLYPH-ROW)."
   (let ((hue (+ 32 (floor (* tile 3) 2))))
     (cond ((and (<= 4 x 11) (<= 4 y 11)
-                (logbitp (- 11 x) (peek (+ font (* 8 (char-code (digit-char tile 16))) (- y 4)))))
+                (logbitp (- 11 x) (glyph-row (char-code (digit-char tile 16)) (- y 4))))
            15)
           ((or (= x 15) (= y 15)) (+ hue 144))  ; the dark edges
           ((or (= x 0) (= y 0)) (+ hue 24))     ; the light ones
           ((and (<= 3 x 12) (<= 3 y 12)) (+ hue 72))
           (t hue))))
 (defun make-tiles ()
-  (let ((font (font-address)))
-    (dotimes (tile +tiles+)
-      (dotimes (y 16)
-        (dotimes (x 16)
-          (setf (aref *tiles* (+ (* 256 tile) (* 64 (mod x 4)) (* 4 y) (floor x 4)))
-                (tile-pixel tile x y font)))))))
+  (dotimes (tile +tiles+)
+    (dotimes (y 16)
+      (dotimes (x 16)
+        (setf (aref *tiles* (+ (* 256 tile) (* 64 (mod x 4)) (* 4 y) (floor x 4)))
+              (tile-pixel tile x y))))))
 (defun store-tiles ()
   "Put the tiles in video memory after the picture: 64 addresses each, 4 for each row."
   (dotimes (plane 4)
-    (sequencer 2 (ash 1 plane))
+    (vga-planes (ash 1 plane))
     (dotimes (tile +tiles+)
       (dotimes (i 64)
         (setf (sap-ref-8 *vga* (+ +store+ (* 64 tile) i))
@@ -96,7 +82,7 @@
     (declare (type system-area-pointer vga)
              (type (simple-array (unsigned-byte 8) (*)) tiles screen))
     (dotimes (plane 4)
-      (outw #x3C4 (logior 2 (ash (ash 1 plane) 8)))    ; map mask: this plane only
+      (vga-planes (ash 1 plane))        ; map mask: this plane only
       (dotimes (row +rows+)
         (dotimes (column +columns+)
           (let ((source (+ (* 256 (aref screen (+ column (* +columns+ row)))) (* 64 plane)))
@@ -112,8 +98,8 @@
   (declare (optimize speed))
   (let ((vga *vga*) (screen *screen*))
     (declare (type system-area-pointer vga) (type (simple-array (unsigned-byte 8) (*)) screen))
-    (outw #x3C4 #x0F02)                 ; map mask: all four planes
-    (outw #x3CE #x4105)                 ; write mode 1 (bit 6 is the 256-colour mode's)
+    (vga-planes #x0F)                   ; map mask: all four planes
+    (vga-graphics 5 #x41)               ; write mode 1 (bit 6 is the 256-colour mode's)
     (dotimes (row +rows+)
       (dotimes (column +columns+)
         (let ((source (+ +store+ (* 64 (aref screen (+ column (* +columns+ row))))))
@@ -124,7 +110,7 @@
               (setf (sap-ref-8 vga (+ target i)) (sap-ref-8 vga (+ source i))))
             (incf source 4)
             (incf target 80)))))
-    (outw #x3CE #x4005)))               ; write mode 0 again
+    (vga-graphics 5 #x40)))             ; write mode 0 again
 
 (defun shuffle ()
   "Change the screen a little: slide one row along, and swap some tiles."
@@ -135,24 +121,12 @@
     (rotatef (aref *screen* (random (length *screen*)))
              (aref *screen* (random (length *screen*))))))
 
-;;; ---- text
-(defun draw-text (x y string colour background)
-  "STRING at X (a multiple of 4), Y."
-  (let ((font (font-address)))
-    (dotimes (plane 4)
-      (sequencer 2 (ash 1 plane))
-      (loop for character across string
-            for address from (+ (* 80 y) (ash x -2)) by 2
-            do (dotimes (row 8)
-                 (let ((bits (peek (+ font (* 8 (char-code character)) row))))
-                   (dotimes (i 2)       ; pixel 4i+plane of the character's eight
-                     (setf (sap-ref-8 *vga* (+ address (* 80 row) i))
-                           (if (logbitp (- 7 plane (* 4 i)) bits) colour background)))))))))
+;;; ---- text: the library's, for planes (MODE-X-TEXT)
 (defun draw-status (latches lisp-rate latch-rate)
   (flet ((line (y mine name rate)
-           (draw-text 0 y (format nil "~C ~A ~5@A tiles/s  "
-                                  (if mine (code-char 16) #\Space) name (or rate "?"))
-                      (if mine 15 7) 0)))
+           (mode-x-text 0 y (format nil "~C ~A ~5@A tiles/s  "
+                                    (if mine (code-char 16) #\Space) name (or rate "?"))
+                        (if mine 15 7) 0)))
     (line 0 (not latches) "From Lisp, by planes: " lisp-rate)
     (line 8 latches "Latches, write mode 1:" latch-rate)))
 
@@ -182,7 +156,7 @@
                           (setf latches (not latches) turn now))
                         (draw-status latches lisp-rate latch-rate)
                         (setf mark (ticks) screens 0)))))
-      (graphics 5 #x40)
+      (vga-graphics 5 #x40)
       (video-mode 3))
     (when (and lisp-rate latch-rate)
       (format t "~&From Lisp's memory, a plane at a time: ~D tiles a second.~%" lisp-rate)

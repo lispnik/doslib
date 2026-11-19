@@ -27,53 +27,18 @@
 
 (defconstant +page+ 19200)              ; addresses in a page: 80 a row, 240 rows
 
-;;; ---- the mode
-(defun sequencer (index value) (outb #x3C4 index) (outb #x3C5 value))
-(defun crtc (index value) (outb #x3D4 index) (outb #x3D5 value))
-(defun mode-x ()
-  "320x240 in 256 colours, four planes: mode 13h, unchained, with 480-line timing."
-  (video-mode #x13)
-  (sequencer 4 #x06)                    ; unchain the four planes
-  (sequencer 0 #x01) (outb #x3C2 #xE3) (sequencer 0 #x03)   ; 480-line timing
-  (outb #x3D4 #x11) (outb #x3D5 (logand (inb #x3D5) #x7F))  ; unlock CRTC 0-7
-  (loop for (index value) in '((#x06 #x0D) (#x07 #x3E) (#x09 #x41) (#x10 #xEA) (#x11 #xAC)
-                               (#x12 #xDF) (#x14 #x00) (#x15 #xE7) (#x16 #x06) (#x17 #xE3))
-        do (crtc index value))
-  (sequencer 2 #x0F)                    ; all planes: clear all of memory
-  (dotimes (i 65536) (setf (sap-ref-8 *vga* i) 0)))
-(defun show-page (start)
-  "Make the page at address START the one displayed, from the next retrace."
-  (loop while (logbitp 3 (inb #x3DA)))  ; not while the VGA is taking the old value
-  (crtc #x0C (ash start -8)) (crtc #x0D (logand start #xFF)))
-
+;;; ---- the mode is the library's (src/modex.lisp): MODE-X sets it, VGA-DISPLAY-START
+;;; says which page is shown, from the next retrace, and VGA-PLANES sets the map mask.
+;;;
 ;;; The vertical retrace is the clock: 60 frames a second in this mode.  But some
-;;; emulators (QEMU is one) report a retrace whenever they are asked, so the timer chip
-;;; is consulted too.  It counts down from 65,536 in each tick of 55 ms -- or, in its
-;;; mode 3, which many a BIOS sets, twice, by twos, with its output high the first time
-;;; and low the second.  A read-back command (C2h to port 43h) gives the output (bit 7)
-;;; and the mode (bits 1-3) in the first byte read and the count in the next two, which
-;;; is enough to tell the four quarters of a tick apart, and no frame begins in the same
-;;; quarter as the one before: at most 73 frames a second, and a monitor's own rate
-;;; where the retrace is real.
-(defvar *quarter* 0)
-(defun timer-quarter ()
-  (outb #x43 #xC2)
-  (let ((status (inb #x40)) (low (inb #x40)) (high (inb #x40)))
-    (declare (ignore low))
-    (if (= (logand status #x06) #x06)   ; mode 3
-        (+ (if (logbitp 7 status) 0 2) (if (logbitp 7 high) 0 1))
-        (ash high -6))))
-(defun wait-quarter ()
-  (loop until (/= (timer-quarter) *quarter*))
-  (setf *quarter* (timer-quarter)))
+;;; emulators (QEMU is one) report a retrace whenever they are asked, so the frames are
+;;; paced by the timer chip too, with the library's WAIT-FRAME: at most 74 a second, and
+;;; a monitor's own rate where the retrace is real.
 
 ;;; ---- drawing in planes
-(declaim (inline planes))
-(defun planes (mask)                    ; the map mask: which planes a write goes to
-  (outw #x3C4 (logior 2 (ash mask 8))))
 (defun clear-page (start colour)
   (declare (type fixnum start) (type (unsigned-byte 8) colour) (optimize speed))
-  (planes #x0F)                         ; four pixels to the byte
+  (vga-planes #x0F)                     ; four pixels to the byte
   (let ((vga *vga*) (word (* colour #x01010101)))
     (declare (type system-area-pointer vga))
     (loop for i of-type fixnum from start below (+ start +page+) by 4
@@ -90,11 +55,11 @@ three at a time, the middle four pixels to the byte."
              (right (ash #x0F (- (logand x2 3) 3))))
         (declare (type fixnum row first last left right))
         (cond ((= first last)
-               (planes (logand left right)) (setf (sap-ref-8 vga first) colour))
-              (t (planes left) (setf (sap-ref-8 vga first) colour)
-                 (planes right) (setf (sap-ref-8 vga last) colour)
+               (vga-planes (logand left right)) (setf (sap-ref-8 vga first) colour))
+              (t (vga-planes left) (setf (sap-ref-8 vga first) colour)
+                 (vga-planes right) (setf (sap-ref-8 vga last) colour)
                  (when (> last (1+ first))
-                   (planes #x0F)
+                   (vga-planes #x0F)
                    (loop for i of-type fixnum from (1+ first) below last
                          do (setf (sap-ref-8 vga i) colour)))))))))
 (defun disc (start x y radius colour)
@@ -119,21 +84,6 @@ three at a time, the middle four pixels to the byte."
   (dotimes (y 240)
     (when (<= (aref *left* y) (aref *right* y))
       (span start (aref *left* y) (aref *right* y) y colour))))
-
-;;; ---- text: the BIOS's 8 by 8 characters, which interrupt vector 43h points to
-(defun font-address () (linear (peek16 #x10E) (peek16 #x10C)))
-(defun draw-text (start x y string colour background)
-  "STRING at X (a multiple of 4), Y of the page at START."
-  (let ((font (font-address)))
-    (dotimes (plane 4)
-      (planes (ash 1 plane))
-      (loop for character across string
-            for address from (+ start (* 80 y) (ash x -2)) by 2
-            do (dotimes (row 8)
-                 (let ((bits (peek (+ font (* 8 (char-code character)) row))))
-                   (dotimes (i 2)       ; pixel 4i+plane of the character's eight
-                     (setf (sap-ref-8 *vga* (+ address (* 80 row) i))
-                           (if (logbitp (- 7 plane (* 4 i)) bits) colour background)))))))))
 
 ;;; ---- the animation
 (defstruct ball x y dx dy radius colour)
@@ -164,13 +114,14 @@ three at a time, the middle four pixels to the byte."
   (dolist (ball balls)
     (disc start (ball-x ball) (ball-y ball) (ball-radius ball) (ball-colour ball))))
 (defun draw-status (start page direct rate)
-  (draw-text start 0 0 (format nil "~40A" (format nil "Page ~D is shown   ~D frames a second"
-                                                  page rate))
-             15 0)
-  (draw-text start 0 8 (format nil "~40A" (if direct
-                                              "Drawing on the page shown   (Space)"
-                                              "Drawing on the hidden page  (Space)"))
-             (if direct 12 10) 0))
+  ;; two lines of the library's text for planes, at the top of the page
+  (mode-x-text 0 0 (format nil "~40A" (format nil "Page ~D is shown   ~D frames a second"
+                                              page rate))
+               15 0 start)
+  (mode-x-text 0 8 (format nil "~40A" (if direct
+                                          "Drawing on the page shown   (Space)"
+                                          "Drawing on the hidden page  (Space)"))
+               (if direct 12 10) 0 start))
 
 (defun flip ()
   (let ((shown 0) (direct nil) (balls (make-balls)) (rate 0)
@@ -186,9 +137,9 @@ three at a time, the middle four pixels to the byte."
                   (let ((page (if direct shown (- 1 shown))))
                     (draw-frame (* page +page+) frame balls)
                     (draw-status (* page +page+) (if direct shown page) direct rate)
-                    (wait-quarter)
+                    (wait-frame)
                     (unless direct      ; the flip: two registers, at the retrace
-                      (show-page (* page +page+))
+                      (vga-display-start (* page +page+))
                       (setf shown page))
                     (wait-retrace))
                   (mapc #'move-ball balls)

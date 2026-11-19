@@ -52,36 +52,8 @@
 (deftype bytes () '(simple-array (unsigned-byte 8) (*)))
 (defun make-bytes (n) (make-array n :element-type '(unsigned-byte 8) :initial-element 0))
 
-;;; ---- time, finer than the BIOS's 18.2 ticks a second
-(defconstant +clocks-a-second+ 1193182)
-(defconstant +frame-clocks+ 16000)      ; a little less than a frame at 70 a second
-(defvar *clock* 0 "The last time CLOCK gave.")
-(defun clock ()
-  "The time in the timer chip's clocks, 1,193,182 to the second: the BIOS's
-count of ticks, and how far counter 0 has got through the 65,536 clocks of
-this one."
-  (loop
-    (let ((tick (ticks)))
-      (outb #x43 #xC2)                  ; read back counter 0: its status, then its count
-      (let* ((status (inb #x40)) (low (inb #x40))
-             (gone (logand (- (+ low (* 256 (inb #x40)))) #xFFFF))
-             (now (+ (* tick 65536)
-                     (if (= (logand status 6) 6)
-                         ;; mode 3, a square wave: it counts down twice a tick, by twos,
-                         ;; and its output (bit 7) is high the first time
-                         (+ (if (logbitp 7 status) 0 32768) (floor gone 2))
-                         gone))))       ; mode 2: once a tick, by ones
-        ;; The counter can start again a moment before the BIOS has counted the
-        ;; tick, and then the time seems to go back by one tick: read again.
-        (unless (or (/= tick (ticks)) (< -65537 (- now *clock*) 0))
-          (return (setf *clock* now)))))))
-(defvar *last-frame* 0)
-(defun wait-frame (&optional retrace)
-  "Wait until a frame's time has passed since the last one -- and then, if
-RETRACE, for the vertical retrace."
-  (loop while (< -1 (- (clock) *last-frame*) +frame-clocks+))
-  (when retrace (wait-retrace))
-  (setf *last-frame* (clock)))
+;;; (Time finer than the BIOS's 18.2 ticks a second, and the pace of the frames, are the
+;;; library's: TIMER-COUNT and WAIT-FRAME, src/input.lisp.)
 
 ;;; ---- the sprite
 (defun ball ()
@@ -136,24 +108,6 @@ it is empty)."
           (unless (zerop colour) (setf (sap-ref-8 dest (+ at column)) colour)))
         (incf i))
       (incf at +width+))))
-
-(defun draw-text (dest x y string colour)
-  "STRING in the BIOS's 8 by 8 characters (they are in the ROM, at FFA6Eh),
-on a black bar."
-  (declare (type system-area-pointer dest) (type (unsigned-byte 16) x y) (fixnum colour)
-           (simple-string string)
-           (optimize speed (safety 0)))
-  (let ((font (int-sap #xFFA6E)))
-    (dotimes (i (min (length string) 40))
-      (let ((code (logand (char-code (char string i)) 127)))
-        (dotimes (row 8)
-          (let ((bits (sap-ref-8 font (+ (* 8 code) row)))
-                (at (+ x (* 8 i) (* +width+ (+ y row)))))
-            (declare (fixnum at))
-            (dotimes (column 8)
-              (setf (sap-ref-8 dest (+ at column))
-                    (if (logbitp (- 7 column) bits) colour 0)))))))))
-
 
 (defun copy-rectangle (from to x y width height)
   "Copy the rectangle at X, Y from one picture to the same place in another:
@@ -237,13 +191,14 @@ move them, and draw them where they are."
   (sb-kernel:system-area-ub8-copy background 0 buffer 0 +screen-bytes+)
   (dotimes (i count)
     (blit buffer sprite (aref (flock-x flock) i) (aref (flock-y flock) i)))
-  (draw-text buffer 0 +bottom+ (text "Space: method  +/-: sprites  Esc: leave") 14))
+  (draw-glyphs buffer (* +width+ +bottom+) +width+
+               (text "Space: method  +/-: sprites  Esc: leave") 14))
 
 (defun dirty-demo ()
   (let ((background (make-background)) (buffer (make-bytes +screen-bytes+))
         (sprite (load-sprite)) (flock (scatter (make-flock))) (count 40)
         (dirty t) (repaint t) (new-text t)
-        (frames 0) (bytes 0) (since (clock)) (frames-a-second 0) (bytes-a-frame 0))
+        (frames 0) (bytes 0) (since (timer-count)) (frames-a-second 0) (bytes-a-frame 0))
     (with-video-mode (#x13)
       (background-palette)
       ;; the vectors must stay where they are while their addresses are in use
@@ -258,17 +213,19 @@ move them, and draw them where they are."
                 ((#\- #\_) (setf count (max 10 (- count 10)) repaint t))))
             (cond (repaint
                    (repaint background buffer sprite flock count)
-                   (setf new-text t frames 0 bytes 0 since (clock)
+                   (setf new-text t frames 0 bytes 0 since (timer-count)
                          frames-a-second 0 bytes-a-frame 0))
                   (t (compose background buffer sprite flock count)))
             (when new-text              ; the two lines at the top change about once a second
-              (draw-text buffer 0 0 (text "~A  ~3D sprites  ~3D fps"
-                                          (if dirty "Dirty rectangles" "The whole screen")
-                                          count frames-a-second)
-                         15)
-              (draw-text buffer 0 8 (text "~6:D of 64,000 bytes a frame (~D%)" bytes-a-frame
-                                          (round (* 100 bytes-a-frame) +screen-bytes+))
-                         (if (< bytes-a-frame +screen-bytes+) 10 12)))
+              (draw-glyphs buffer 0 +width+
+                           (text "~A  ~3D sprites  ~3D fps"
+                                 (if dirty "Dirty rectangles" "The whole screen")
+                                 count frames-a-second)
+                           15)
+              (draw-glyphs buffer (* 8 +width+) +width+
+                           (text "~6:D of 64,000 bytes a frame (~D%)" bytes-a-frame
+                                 (round (* 100 bytes-a-frame) +screen-bytes+))
+                           (if (< bytes-a-frame +screen-bytes+) 10 12)))
             (wait-frame t)
             (cond ((or repaint (not dirty))
                    (sb-kernel:system-area-ub8-copy buffer 0 screen 0 +screen-bytes+)
@@ -279,13 +236,13 @@ move them, and draw them where they are."
                        (incf bytes (* +width+ 16)))))
             (setf repaint nil new-text nil)
             (incf frames)
-            (let ((elapsed (- (clock) since)))
-              (when (or (>= elapsed +clocks-a-second+) (< elapsed 0))   ; a second (or midnight)
+            (let ((elapsed (- (timer-count) since)))
+              (when (or (>= elapsed +timer-hz+) (< elapsed 0))   ; a second (or midnight)
                 (when (> elapsed 0)
-                  (setf frames-a-second (round (* frames +clocks-a-second+) elapsed)
+                  (setf frames-a-second (round (* frames +timer-hz+) elapsed)
                         bytes-a-frame (round bytes frames)
                         new-text t))
-                (setf frames 0 bytes 0 since (clock))))))))
+                (setf frames 0 bytes 0 since (timer-count))))))))
     (format t "~&dirty: ~D sprites, ~:D bytes a frame to video memory with ~A, ~
                ~D frames a second.~%"
             count bytes-a-frame (if dirty "dirty rectangles" "whole-screen copies")

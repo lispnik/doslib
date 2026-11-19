@@ -31,6 +31,8 @@ with its own :TOPLEVEL function calls it first."
   (clrhash *dos-blocks*)                ; DOS memory: none of it is ours any more
   (setf *scratch* nil)
   (clrhash *drive-methods*)
+  (setf *timer-count* 0 *last-frame* 0) ; midnight may have passed, or the machine restarted
+  (setf *blaster-counter* nil *blaster-handler* nil)    ; they were the old process's memory
   (setf *hotkey-segment* nil)
   (setf *hotkey-old-vector* nil)        ; a new process: nothing is hooked
   (clrhash *hotkey-functions*)

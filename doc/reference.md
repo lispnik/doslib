@@ -145,7 +145,7 @@ Machine code: the CPUID instruction.
 **`cpuid`** `leaf` — Function  
 The processor's answer to CPUID with EAX = LEAF: EAX, EBX, ECX and EDX.
 
-### `src/memory.lisp`: Reading memory by address.
+### `src/memory.lisp`: Reading memory by address, and making a device's memory addressable.
 
 **`peek`** `address` — Function  
 The byte at ADDRESS.
@@ -155,6 +155,15 @@ The 16 bits at ADDRESS.
 
 **`peek32`** `address` — Function  
 The 32 bits at ADDRESS.
+
+**`map-physical`** `physical size` — Function  
+Make SIZE bytes of a device's memory, at the physical address PHYSICAL, addressable (DPMI function 0800h).  Returns the address they are at, to use with PEEK or INT-SAP, or NIL if the DPMI host would not.
+
+**`unmap-physical`** `address` — Function  
+Take away a mapping that MAP-PHYSICAL made at ADDRESS (DPMI function 0801h).
+
+**`with-physical-memory`** `(address physical size) &body body` — Macro  
+Run BODY with ADDRESS bound to where SIZE bytes of device memory at the physical address PHYSICAL have been mapped (MAP-PHYSICAL), or to NIL if the DPMI host would not; the mapping is taken away afterwards.
 
 ### `src/interrupts.lisp`: Protected-mode interrupt vectors, through DPMI.
 
@@ -213,8 +222,11 @@ Run BODY in video mode MODE, and go back to 80x25 text however it ends.
 **`wait-retrace`** `` — Function  
 Wait for the start of the next vertical retrace: the moment to change the palette or the picture without it showing.
 
-**`vesa-set-mode`** `mode` — Function  
-Set a VESA BIOS mode (#x101 is 640x480 in 256 colours).  True if the BIOS did.
+**`vesa-set-mode`** `mode &key linear keep` — Function  
+Set a VESA BIOS mode (#x101 is 640x480 in 256 colours).  True if the BIOS did.  With LINEAR the mode is set for its linear framebuffer (see VESA-MODE-INFO) and not for the 64K window at A0000h that VESA-SET-BANK moves; with KEEP video memory is not cleared, and the picture stays.
+
+**`vesa-mode-info`** `mode` — Function  
+What the VESA BIOS says of MODE (INT 10h, AX=4F01h), as a property list, or NIL if it knows no such mode.  :WIDTH and :HEIGHT are in pixels, :BITS the bits in a pixel, :LINE-BYTES the bytes from one row to the next; :FRAMEBUFFER is the physical address of the mode's linear framebuffer, for MAP-PHYSICAL, or NIL if it has none; :GRANULARITY is how many kilobytes one step of VESA-SET-BANK moves the window; :ATTRIBUTES is the mode's attribute word (bit 7: a linear framebuffer, bit 4: graphics).
 
 **`vesa-set-bank`** `bank &optional (window 0)` — Function  
 Move the 64K window at A0000h to BANK of a VESA mode's video memory.
@@ -231,6 +243,46 @@ Set the pixel at X, Y in mode 13h; off the screen, nothing happens.
 **`draw-line`** `x0 y0 x1 y1 colour` — Function  
 Draw a line in mode 13h (Bresenham's algorithm).
 
+### `src/gtext.lisp`: Text in the graphics modes: the BIOS's 8 by 8 characters, as pixels.
+
+**`glyph-row`** `character row` — Function  
+Row ROW (0 at the top to 7) of CHARACTER, a character or its code, in the BIOS's 8 by 8 font: a byte, the leftmost pixel in bit 7.  The ROM has the first 128 characters; one above that is given the pattern 128 below it.
+
+**`glyph-rows`** `character` — Function  
+The eight rows of CHARACTER in the BIOS's 8 by 8 font, top first, as a vector of bytes: see GLYPH-ROW.
+
+**`draw-glyphs`** `memory offset row-bytes string colour &optional (background 0)` — Function  
+Write STRING in the BIOS's 8 by 8 characters into memory that has a byte for each pixel.  MEMORY is a system area pointer, OFFSET where in it the top left pixel of the first character goes, and ROW-BYTES the distance from one row of pixels to the next: 320 in mode 13h.  The pixels of the letters are set to COLOUR and the rest of each character's square to BACKGROUND; if that is NIL they are left as they were.  Nothing is clipped.
+
+**`graphics-text`** `x y string colour &optional (background 0)` — Function  
+Write STRING in mode 13h with the top left corner of its first character at X, Y: each character is 8 by 8 pixels, the letters in COLOUR on BACKGROUND, or over the picture as it is if BACKGROUND is NIL.  Characters that would not be wholly on the screen are left out.
+
+### `src/modex.lisp`: The VGA's registers, and "Mode X": 320 by 240 in 256 colours, in planes.
+
+**`vga-sequencer`** `index &optional value` — Function  
+The VGA sequencer's register INDEX (ports 3C4h and 3C5h): set it to VALUE, or, with no VALUE, return what it holds.  Register 2 is the map mask (see VGA-PLANES), 4 the memory mode.
+
+**`vga-crtc`** `index &optional value` — Function  
+The CRT controller's register INDEX (ports 3D4h and 3D5h): set it to VALUE, or, with no VALUE, return what it holds.  Registers 0 to 7 cannot be written while bit 7 of register 11h is set.
+
+**`vga-graphics`** `index &optional value` — Function  
+The graphics controller's register INDEX (ports 3CEh and 3CFh): set it to VALUE, or, with no VALUE, return what it holds.  Register 5 is the mode: its low two bits are the write mode.
+
+**`vga-attribute`** `index &optional value` — Function  
+The attribute controller's register INDEX (port 3C0h; read at 3C1h): set it to VALUE, or, with no VALUE, return what it holds.  The display stays on.  Register 13h is the horizontal pixel panning.
+
+**`vga-planes`** `mask` — Function  
+Say which of the four planes of video memory a write goes to: bit 0 of MASK for plane 0, and so on to bit 3.  (The sequencer's map mask, register 2.)  In Mode X, 1, 2, 4 or 8 is one pixel of the four at an address, and 15 all four at once.
+
+**`vga-display-start`** `address` — Function  
+Have the display begin at ADDRESS of video memory (CRT controller registers 0Ch and 0Dh), from the next vertical retrace: how pages are flipped and pictures scrolled.  In Mode X one address is four pixels, and a row is 80 addresses.  If a retrace is going on, its end is waited for, so that the VGA does not take half of the old address and half of the new.
+
+**`mode-x`** `` — Function  
+Set Mode X: 320 by 240 in 256 colours, with square pixels and video memory in four planes of 64K.  The pixel X, Y is in plane X mod 4, at address 80 Y + X / 4 from *VGA*; VGA-PLANES says which planes are written. All of video memory is cleared.  The BIOS still believes it is in mode 13h; (video-mode 3) goes back to text.
+
+**`mode-x-text`** `x y string colour &optional (background 0) (start 0) (row-bytes 80)` — Function  
+Write STRING in Mode X, in the BIOS's 8 by 8 characters, with the top left corner of its first character at X (a multiple of 4), Y: the letters in COLOUR on BACKGROUND, or over the picture as it is if BACKGROUND is NIL. START is the address in video memory of the page to write on, and ROW-BYTES the addresses from one row to the next, if it is not the usual 80.  Nothing is clipped, and the map mask is left naming plane 3.
+
 ### `src/input.lisp`: The BIOS timer tick and keyboard.
 
 **`ticks`** `` — Function  
@@ -238,6 +290,12 @@ The BIOS's count of timer ticks: 18.2 a second, zero at midnight.
 
 **`wait-tick`** `&optional (n 1)` — Function  
 Wait for N ticks of the BIOS timer: 18.2 to the second.
+
+**`timer-count`** `` — Function  
+The time in the timer chip's clocks, +TIMER-HZ+ (1,193,182) to the second: the BIOS's count of ticks, 65,536 clocks each, and how far the timer has got through this one.  For timing what is over in less than a tick, and for pacing: see WAIT-FRAME.
+
+**`wait-frame`** `&optional retrace` — Function  
+Wait until a frame's time has passed since WAIT-FRAME last returned: 16,000 of TIMER-COUNT's clocks, a little less than a frame at 70 a second. Then, if RETRACE, wait for the vertical retrace as well.  This paces an animation where WAIT-RETRACE alone does not: some emulators (QEMU is one) report a retrace whenever they are asked.
 
 **`key-pressed-p`** `` — Function  
 Is a key waiting to be read?
@@ -423,6 +481,44 @@ The first address at or after ADDRESS where LENGTH bytes (65536 at most) lie wit
 
 **`with-dma-memory`** `(address length) &body body` — Macro  
 Run BODY with ADDRESS bound to the address of LENGTH bytes of DOS memory that a DMA channel can be pointed at, freed afterwards.
+
+### `src/blaster.lisp`: The Sound Blaster: where the card is, its processor (the "DSP"), and
+
+**`*blaster-port*`** — Variable  
+The Sound Blaster's first port: BLASTER-SETTINGS sets it.
+
+**`*blaster-irq*`** — Variable  
+The Sound Blaster's interrupt request line: BLASTER-SETTINGS sets it.
+
+**`*blaster-dma*`** — Variable  
+The Sound Blaster's DMA channel for 8-bit sound: BLASTER-SETTINGS sets it.
+
+**`*blaster-dma16*`** — Variable  
+A Sound Blaster 16's DMA channel for 16-bit sound: BLASTER-SETTINGS sets it.
+
+**`blaster-settings`** `&optional (text (posix-getenv "BLASTER"))` — Function  
+Take the card's port, interrupt and DMA channels from TEXT, which is the BLASTER environment variable unless given: "A220 I5 D1 H5" is port 220h, interrupt 5, and DMA channels 1 (8 bits) and 5 (16 bits).  What it does not say, or all of it if it is not set, is as in that example.  Sets *BLASTER-PORT*, *BLASTER-IRQ*, *BLASTER-DMA* and *BLASTER-DMA16*, and returns the four.
+
+**`blaster-write`** `byte` — Function  
+Send BYTE, a command or part of one, to the card's processor, when it is ready for it.
+
+**`blaster-read`** `` — Function  
+The next byte of the card's processor's answer, when there is one.
+
+**`blaster-reset`** `` — Function  
+Reset the card's processor: whatever it was playing or recording stops. True if a card answered at *BLASTER-PORT*.
+
+**`blaster-version`** `` — Function  
+The version of the card's processor, as two values: 2 and up plays without a gap (auto-initialized DMA), 3 is a Sound Blaster Pro, 4 a Sound Blaster 16.
+
+**`blaster-present-p`** `` — Function  
+Is there a Sound Blaster this library can use?  Reads the settings (BLASTER-SETTINGS) and resets the card: true if the interrupt is from 2 to 7, the 8-bit DMA channel is 0, 1 or 3, and a card answered.
+
+**`blaster-interrupts`** `` — Function  
+How many times the card has interrupted since WITH-BLASTER-INTERRUPT began: once for each block of samples played or recorded.
+
+**`with-blaster-interrupt`** `() &body body` — Macro  
+Run BODY with the card's interrupts counted: BLASTER-INTERRUPTS, which starts at 0, says how many there have been.  A handler in machine code is put on the card's interrupt (*BLASTER-IRQ*, from 2 to 7) and the interrupt controller is told to let it through; however BODY ends, the controller's mask and the vector are put back as they were, and the card is reset. Stopping what the card was doing (and its DMA channel) first is for BODY to do, with UNWIND-PROTECT.
 
 ### `src/pci.lisp`: PCI configuration space, by the ports CF8h and CFCh.
 

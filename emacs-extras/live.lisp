@@ -116,23 +116,10 @@
           (return-from live-find-card
             (values (logandc2 (register #x10) 15) (logandc2 (register #x18) 15))))))))
 (defun live-map (physical size)
-  "Make SIZE bytes of device memory at PHYSICAL addressable (DPMI 0800h); returns a SAP."
-  ;; (INT86 does not carry SI, which this call needs: so, a stub of its own)
-  (let* ((stub (machine-code #x53 #x56 #x57              ; push ebx / esi / edi
-                             #x8B #x4C #x24 #x10         ; mov ecx,[esp+16]   the address
-                             #x89 #xCB #xC1 #xEB #x10    ; mov ebx,ecx / shr ebx,16
-                             #x8B #x7C #x24 #x14         ; mov edi,[esp+20]   the size
-                             #x89 #xFE #xC1 #xEE #x10    ; mov esi,edi / shr esi,16
-                             #xB8 #x00 #x08 #x00 #x00    ; mov eax,0800h
-                             #xCD #x31                   ; int 31h
-                             #x72 10                     ; jc failed
-                             #xC1 #xE3 #x10 #x66 #x89 #xCB   ; shl ebx,16 / mov bx,cx
-                             #x89 #xD8 #xEB #x02         ; mov eax,ebx / jmp done
-                             #x31 #xC0                   ; failed: xor eax,eax
-                             #x5F #x5E #x5B #xC3))       ; done: pop edi / esi / ebx / ret
-         (linear (alien-funcall (sap-alien stub (function unsigned unsigned unsigned))
-                                physical size)))
-    (when (zerop linear) (editor-error "The DPMI host would not map the display's memory"))
+  "Make SIZE bytes of device memory at PHYSICAL addressable (the library's MAP-PHYSICAL:
+DPMI 0800h); returns a SAP."
+  (let ((linear (map-physical physical size)))
+    (unless linear (editor-error "The DPMI host would not map the display's memory"))
     (int-sap linear)))
 (defun live-read-font ()
   "Copy the VGA's 8x16 font out of the card.  The VGA must be in text mode."

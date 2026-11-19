@@ -159,14 +159,13 @@ different colours that any one frame has."
   (dotimes (j height)
     (fill *picture* colour :start (+ x (* 320 (+ y j))) :end (+ x width (* 320 (+ y j))))))
 (defun draw-text (x y string colour &optional (scale 1))
-  "STRING in the BIOS's 8 by 8 characters (they are in the ROM, at FFA6Eh), SCALE times as big."
-  (let ((font (int-sap #xFFA6E)))
-    (loop for c across string for cx from x by (* 8 scale)
-          do (dotimes (row 8)
-               (let ((bits (sap-ref-8 font (+ (* 8 (logand (char-code c) 127)) row))))
-                 (dotimes (column 8)
-                   (when (logbitp (- 7 column) bits)
-                     (box (+ cx (* scale column)) (+ y (* scale row)) scale scale colour))))))))
+  "STRING in the BIOS's 8 by 8 characters (the library's GLYPH-ROW), SCALE times as big."
+  (loop for c across string for cx from x by (* 8 scale)
+        do (dotimes (row 8)
+             (let ((bits (glyph-row c row)))
+               (dotimes (column 8)
+                 (when (logbitp (- 7 column) bits)
+                   (box (+ cx (* scale column)) (+ y (* scale row)) scale scale colour)))))))
 (defun draw-picture (colours faked timed)
   (fill *picture* 0)
   (dolist (x '(10 294))                 ; two pillars

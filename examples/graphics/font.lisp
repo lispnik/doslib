@@ -11,14 +11,12 @@
 (in-package #:doslib-examples.font)
 
 (defvar *text* (int-sap #xB8000))
-(defun sequencer (index value) (outb #x3C4 index) (outb #x3C5 value))
-(defun graphics (index value) (outb #x3CE index) (outb #x3CF value))
-(defun call-with-font-memory (function)
-  (sequencer 2 4) (sequencer 4 7)       ; write plane 2, no odd/even addressing
-  (graphics 4 2) (graphics 5 0) (graphics 6 4)  ; read plane 2, map at A0000
+(defun call-with-font-memory (function)  ; (the library's writers of the VGA's registers)
+  (vga-sequencer 2 4) (vga-sequencer 4 7)               ; write plane 2, no odd/even addressing
+  (vga-graphics 4 2) (vga-graphics 5 0) (vga-graphics 6 4)      ; read plane 2, map at A0000
   (funcall function)
-  (sequencer 2 3) (sequencer 4 3)       ; back to the text-mode arrangement
-  (graphics 4 0) (graphics 5 #x10) (graphics 6 #x0E))
+  (vga-sequencer 2 3) (vga-sequencer 4 3)               ; back to the text-mode arrangement
+  (vga-graphics 4 0) (vga-graphics 5 #x10) (vga-graphics 6 #x0E))
 (defun define-glyph (code rows)         ; ROWS: 16 strings of 8, # is ink
   (loop for row in rows for y from 0
         do (setf (sap-ref-8 *vga* (+ (* 32 code) y))

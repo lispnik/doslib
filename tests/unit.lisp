@@ -336,6 +336,127 @@
               (is= 77 (sb-sys:sap-ref-8 *vga* 5)))      ; another part of the picture
     (video-mode 3)))
 
+(deftest graphics-text
+  ;; the letter A in the ROM's 8 by 8 font
+  (is= '(#x30 #x78 #xCC #xCC #xFC #xCC #xCC #x00) (coerce (glyph-rows #\A) 'list))
+  (is= #x78 (glyph-row #\A 1))
+  (is= #x78 (glyph-row 65 1))
+  (is= #x78 (glyph-row (+ 128 65) 1))                   ; only 128 characters are there
+  (is= 0 (glyph-row #\Space 3))
+  (flet ((pixel (x y) (sb-sys:sap-ref-8 *vga* (+ x (* 320 y)))))
+    (with-video-mode (#x13)
+      (dotimes (i 64000) (setf (sb-sys:sap-ref-8 *vga* i) 7))
+      (graphics-text 16 8 "A" 12)                       ; row 0 of A is ..XX....
+      (is= '(0 0 12 12 0 0 0 0) (loop for x from 16 below 24 collect (pixel x 8)))
+      (is= '(12 12 12 12 12 12 0 0) (loop for x from 16 below 24 collect (pixel x 12)))
+      (is= 7 (pixel 15 8)) (is= 7 (pixel 24 8)) (is= 7 (pixel 16 7)) (is= 7 (pixel 16 16))
+      (graphics-text 16 8 "A" 12 3)                     ; a background colour
+      (is= '(3 3 12 12 3 3 3 3) (loop for x from 16 below 24 collect (pixel x 8)))
+      (graphics-text 32 8 "A" 9 nil)                    ; none: the picture shows through
+      (is= '(7 7 9 9 7 7 7 7) (loop for x from 32 below 40 collect (pixel x 8)))
+      ;; characters that are not wholly on the screen are left out
+      (graphics-text 300 100 "AAAA" 12)
+      (is= 12 (pixel 310 100)) (is= 7 (pixel 318 100)) (is= 7 (pixel 0 101))
+      (graphics-text -4 100 "AA" 12)
+      (is= 7 (pixel 0 100)) (is= 12 (pixel 6 100))
+      (graphics-text 0 196 "A" 12)
+      (is= 7 (pixel 2 196))
+      ;; and into memory of any width
+      (let ((buffer (make-array 160 :element-type '(unsigned-byte 8) :initial-element 1)))
+        (sb-sys:with-pinned-objects (buffer)
+          (draw-glyphs (sb-sys:vector-sap buffer) 2 20 "AB" 5))
+        (is= '(1 1 0 0 5 5 0 0 0 0 5 5 5 5 5 5 0 0 1 1) (coerce (subseq buffer 0 20) 'list))
+        (is= 1 (aref buffer 159))))))
+
+(deftest mode-x
+  (unwind-protect
+       (progn
+         (mode-x)
+         (is= #x13 (current-video-mode))                ; as far as the BIOS knows
+         (is= #x06 (vga-sequencer 4))                   ; unchained
+         (is= #x0F (vga-sequencer 2))                   ; all four planes
+         (is= #xDF (vga-crtc #x12))                     ; 480 scan lines
+         (is= #x41 (vga-crtc #x09))                     ; each row of pixels twice
+         (is= #x55 (vga-crtc #x18 #x55)) (is= #x55 (vga-crtc #x18))     ; written, read back
+         (is= #x40 (logand #x43 (vga-graphics 5)))      ; 256 colours, write mode 0
+         (vga-graphics 5 #x41) (is= #x41 (logand #x43 (vga-graphics 5)))
+         (vga-graphics 5 #x40)
+         (vga-attribute #x13 2) (is= 2 (vga-attribute #x13))
+         (vga-attribute #x13 0) (is= 0 (vga-attribute #x13))
+         (vga-display-start #x1234)
+         (is= #x12 (vga-crtc #x0C)) (is= #x34 (vga-crtc #x0D))
+         (vga-display-start 0)
+         ;; one address, four planes: four pixels
+         (flet ((peek-plane (plane address)
+                  (vga-graphics 4 plane)                ; the read map: which plane is read
+                  (sb-sys:sap-ref-8 *vga* address)))
+           (is= 0 (peek-plane 0 100))                   ; memory was cleared
+           (vga-planes 4) (setf (sb-sys:sap-ref-8 *vga* 100) 9)
+           (is= #x04 (vga-sequencer 2))
+           (is= '(0 0 9 0) (loop for plane below 4 collect (peek-plane plane 100)))
+           (vga-planes 15) (setf (sb-sys:sap-ref-8 *vga* 100) 5)
+           (is= '(5 5 5 5) (loop for plane below 4 collect (peek-plane plane 100)))
+           ;; text: row 0 of A is ..XX...., so at x 8, y 16 planes 2 and 3 have it
+           ;; in the first address and no plane in the second
+           (mode-x-text 8 16 "A" 12 3)
+           (is= '(3 3 12 12) (loop for plane below 4 collect (peek-plane plane (+ 2 (* 80 16)))))
+           (is= '(3 3 3 3) (loop for plane below 4 collect (peek-plane plane (+ 3 (* 80 16)))))
+           (mode-x-text 8 16 "A" 14 nil 19200 88)       ; another page, wider rows, no background
+           (is= '(0 0 14 14)
+                (loop for plane below 4 collect (peek-plane plane (+ 19200 2 (* 88 16)))))))
+    (video-mode 3))
+  (is= 3 (current-video-mode)))
+
+(deftest timer-count
+  (let ((start (timer-count)) (tick (ticks)))
+    (is (<= (* 65536 tick) start (* 65536 (+ tick 2))))
+    (let ((previous start))
+      (dotimes (i 2000)
+        (let ((now (timer-count)))
+          (is (>= now previous))                        ; it does not go back
+          (setf previous now))))
+    (wait-tick 2)
+    (is (< 65536 (- (timer-count) start) (* 4 65536))))
+  (wait-frame)
+  (let ((start (timer-count)))
+    (dotimes (i 10) (wait-frame))
+    (let ((elapsed (- (timer-count) start)))             ; ten frames of 16,000 clocks
+      (is (< 150000 elapsed 400000)))))
+
+(deftest vesa-linear
+  (is (null (vesa-mode-info #x7F0)))                    ; no such mode
+  (let* ((info (vesa-mode-info #x101))
+         (physical (getf info :framebuffer)))
+    (is= 640 (getf info :width))
+    (is= 480 (getf info :height))
+    (is= 8 (getf info :bits))
+    (is (>= (getf info :line-bytes) 640))
+    (is (plusp (getf info :granularity)))
+    (is (logbitp 7 (getf info :attributes)))
+    (is (and (integerp physical) (> physical #x100000)))
+    (unwind-protect
+         (with-physical-memory (address physical (* 640 480))
+           (is (integerp address))
+           (let ((screen (sb-sys:int-sap address)))
+             (is (vesa-set-mode #x101 :linear t))
+             (setf (sb-sys:sap-ref-8 screen 0) 77 (sb-sys:sap-ref-8 screen 300000) 99)
+             (is= 77 (sb-sys:sap-ref-8 screen 0))
+             (is= 99 (sb-sys:sap-ref-8 screen 300000))
+             (is (vesa-set-mode #x101 :linear t :keep t))       ; the picture stays
+             (is= 99 (sb-sys:sap-ref-8 screen 300000))
+             (is (vesa-set-mode #x101 :linear t))               ; and this clears it
+             (is= 0 (sb-sys:sap-ref-8 screen 300000))
+             ;; it is the same memory that the window at A0000h shows 64K of
+             (is (vesa-set-mode #x101))
+             (setf (sb-sys:sap-ref-8 screen 70000) 123)
+             (vesa-set-bank (floor 64 (getf info :granularity)))
+             (is= 123 (sb-sys:sap-ref-8 *vga* (- 70000 65536)))))
+      (video-mode 3))
+    ;; mapped again (the stub is kept from the first time), and unmapped by hand
+    (let ((address (map-physical physical 4096)))
+      (is (integerp address))
+      (unmap-physical address))))
+
 (deftest speaker
   (unwind-protect
        (progn (speaker-on 440)
@@ -446,3 +567,41 @@
                 (is= (logand address #xFFFF) (dma-address 3))
                 (is= 2047 (dma-count 3)))
       (dma-stop 3))))
+
+(deftest blaster
+  (is= '(#x240 7 3 6) (multiple-value-list (blaster-settings "A240 I7 D3 H6 T6")))
+  (is= #x240 *blaster-port*) (is= 7 *blaster-irq*) (is= 3 *blaster-dma*) (is= 6 *blaster-dma16*)
+  (is= '(#x220 5 0 5) (multiple-value-list (blaster-settings "d0")))    ; the rest as usual
+  (is= '(#x220 5 1 5) (multiple-value-list (blaster-settings nil)))
+  (is (blaster-present-p))                              ; QEMU's sb16
+  (is (blaster-reset))
+  (multiple-value-bind (major minor) (blaster-version)
+    (is= 4 major)
+    (is (<= 0 minor 99)))
+  (let ((old-port *blaster-port*))                      ; nothing answers at 280h
+    (unwind-protect (progn (setf *blaster-port* #x280) (is (not (blaster-reset))))
+      (setf *blaster-port* old-port)))
+  ;; The interrupt: a block of 512 samples of silence, played once (DSP command
+  ;; 14h), is over in a fortieth of a second, and the card says so.
+  (let ((vector (+ 8 *blaster-irq*)) (mask (inb #x21)))
+    (multiple-value-bind (selector offset) (get-vector vector)
+      (with-dma-memory (address 512)
+        (dotimes (i 512) (setf (sb-sys:sap-ref-8 (sb-sys:int-sap address) i) 128))
+        (with-blaster-interrupt ()
+          (is= 0 (blaster-interrupts))
+          (is (not (logbitp *blaster-irq* (inb #x21))))         ; let through
+          (is (/= offset (nth-value 1 (get-vector vector))))
+          (unwind-protect
+               (progn (dma-start *blaster-dma* address 512 :repeat nil)
+                      (blaster-write #xD1)
+                      (blaster-write #x40) (blaster-write (- 256 (round 1000000 22050)))
+                      (blaster-write #x14) (blaster-write (lo 511)) (blaster-write (hi 511))
+                      (let ((start (ticks)))
+                        (loop until (or (plusp (blaster-interrupts)) (> (- (ticks) start) 36))))
+                      (is= 1 (blaster-interrupts)))
+            (blaster-write #xD3)
+            (dma-stop *blaster-dma*))))
+      (is= mask (inb #x21))                             ; and everything is as it was
+      (is= (list selector offset) (multiple-value-list (get-vector vector)))))
+  ;; a second time, the count starts again
+  (with-blaster-interrupt () (is= 0 (blaster-interrupts))))

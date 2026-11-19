@@ -35,80 +35,12 @@
   (:export #:main))
 (in-package #:doslib-examples.dmascope)
 
-(defvar *base* #x220 "The card's first port.")
-(defvar *irq* 5)
-(defvar *dma* 1 "The 8-bit DMA channel.")
+;;; The card is the library's (src/blaster.lisp): where it is, commands to its processor
+;;; (BLASTER-WRITE), and its interrupt, counted (WITH-BLASTER-INTERRUPT, BLASTER-INTERRUPTS).
+;;; So is the DMA controller (src/dma.lisp): DMA-START, DMA-STOP, and DMA-ADDRESS and
+;;; DMA-COUNT, which read its registers while it counts.
 
-(defun read-settings ()
-  "Take the port, interrupt and DMA channel from BLASTER=A220 I5 D1, if it is set."
-  (setf *base* #x220 *irq* 5 *dma* 1)
-  (let ((text (posix-getenv "BLASTER")))
-    (when text
-      (loop with start = 0
-            for end = (or (position #\Space text :start start) (length text))
-            do (when (> end (1+ start))
-                 (let ((number (subseq text (1+ start) end)))
-                   (case (char-upcase (char text start))
-                     (#\A (setf *base* (or (parse-integer number :radix 16 :junk-allowed t)
-                                           *base*)))
-                     (#\I (setf *irq* (or (parse-integer number :junk-allowed t) *irq*)))
-                     (#\D (setf *dma* (or (parse-integer number :junk-allowed t) *dma*))))))
-               (when (>= end (length text)) (return))
-               (setf start (1+ end))))))
-
-;;; ---- the card's processor (the "DSP"), as in the blaster example
-(defun dsp-write (byte)
-  (loop repeat 100000 while (logbitp 7 (inb (+ *base* #xC))))
-  (outb (+ *base* #xC) byte))
-(defun dsp-read ()
-  (loop repeat 100000 until (logbitp 7 (inb (+ *base* #xE))))
-  (inb (+ *base* #xA)))
-(defun dsp-reset ()
-  "Reset the card.  True if one answered."
-  (outb (+ *base* 6) 1)
-  (dotimes (i 200) (inb (+ *base* 6)))
-  (outb (+ *base* 6) 0)
-  (loop repeat 2000
-        thereis (and (logbitp 7 (inb (+ *base* #xE)))
-                     (= (inb (+ *base* #xA)) #xAA))))
-(defun dsp-version ()
-  (dsp-write #xE1)
-  (let* ((major (dsp-read)) (minor (dsp-read)))
-    (values major minor)))
-
-;;; (The DMA controller is the library's: DMA-START, DMA-STOP, and DMA-ADDRESS
-;;; and DMA-COUNT, which read its registers while it counts.  src/dma.lisp.)
-
-;;; ---- the interrupt: acknowledge, count, return
-(defvar *counter* nil "Four bytes the handler counts interrupts in.")
-(defun handler-code ()
-  (let ((ds (data-selector)) (acknowledge (+ *base* #xE)))
-    (machine-code #x50 #x52 #x1E                        ; push eax / push edx / push ds
-                  #x66 #xB8 (lo ds) (hi ds)             ; mov ax, our data selector
-                  #x8E #xD8                             ; mov ds, ax
-                  #xBA (lo acknowledge) (hi acknowledge) 0 0    ; mov edx, base+0Eh
-                  #xEC                                  ; in al, dx      the card: seen
-                  #xFF #x05 (lo (sap-int *counter*)) (hi (sap-int *counter*))
-                  (ldb (byte 8 16) (sap-int *counter*)) (ldb (byte 8 24) (sap-int *counter*))
-                                                        ; inc dword [counter]
-                  #xB0 #x20 #xE6 #x20                   ; mov al,20h / out 20h,al
-                  #x1F #x5A #x58 #xCF)))                ; pop ds / pop edx / pop eax / iretd
-(defun interrupts () (sap-ref-32 *counter* 0))
-
-;;; ---- drawing: mode 13h, and letters from the BIOS's 8x8 font in ROM
-(defconstant +font+ #xFFA6E "The first 128 characters, eight bytes each, in every PC's ROM.")
-
-(defun draw-text (x y string colour &optional (background 0))
-  "Write STRING with its top left corner at X, Y, over whatever was there."
-  (loop for c across string
-        for left from x by 8
-        do (let ((glyph (+ +font+ (* 8 (logand (char-code c) 127)))))
-             (dotimes (row 8)
-               (let ((bits (peek (+ glyph row))))
-                 (dotimes (column 8)
-                   (plot (+ left column) (+ y row)
-                         (if (logbitp (- 7 column) bits) colour background))))))))
-
+;;; ---- drawing: mode 13h; the letters are the library's (GRAPHICS-TEXT)
 (defconstant +block+ 4096 "Samples between interrupts.")
 (defconstant +top+ 20 "The first line of the scope.")
 (defconstant +height+ 96)
@@ -187,25 +119,20 @@ harmonics, read at the note's speed and dying away."
 
 (defun main ()
   "Draw the Sound Blaster's DMA buffer and the DMA controller's registers as it plays."
-  (read-settings)
-  (unless (and (<= 0 *dma* 3) (/= *dma* 2) (<= 2 *irq* 7) (dsp-reset))
+  (unless (blaster-present-p)
     (format t "~&No Sound Blaster answered at port ~Xh.  (QEMU: -device sb16; ~
-               SET BLASTER=A220 I5 D1 says where a card is.)~%" *base*)
+               SET BLASTER=A220 I5 D1 says where a card is.)~%" *blaster-port*)
     (return-from main (values)))
-  (multiple-value-bind (major minor) (dsp-version)
+  (multiple-value-bind (major minor) (blaster-version)
     (when (< major 2)
       (format t "~&The card's DSP is version ~D.~2,'0D: auto-initialized DMA came with version 2.~%"
               major minor)
       (return-from main (values)))
-    (unless *counter* (setf *counter* (alien-sap (make-alien (unsigned 32) 1))))
-    (setf (sap-ref-32 *counter* 0) 0)
     (let* ((rate 11025)
            (samples (synthesize rate))
            (total (length samples))
            (position 0) (handled 0) (refilled nil) (paused nil)
-           (frames 0) (start-ticks (ticks)) (steps 0) (last-address -1)
-           (vector (+ 8 *irq*))
-           (old-mask (inb #x21)))
+           (frames 0) (start-ticks (ticks)) (steps 0) (last-address -1))
       (with-dos-memory (segment (* 4 +block+))
         ;; A DMA transfer cannot cross a 64K boundary of memory: there is room
         ;; here for two blocks on one side or the other of any boundary.
@@ -215,69 +142,71 @@ harmonics, read at the note's speed and dying away."
                    (dotimes (i +block+)
                      (setf (sap-ref-8 buffer (+ (* half +block+) i)) (aref samples position)
                            position (mod (1+ position) total)))))
-            (multiple-value-bind (old-selector old-offset) (get-vector vector)
+            (with-blaster-interrupt ()
               (unwind-protect
                    (with-video-mode (#x13)
                      (set-colours)
-                     (draw-text 0 0 (format nil "DMA scope: ~Xh IRQ ~D DMA ~D, DSP ~D.~2,'0D"
-                                            *base* *irq* *dma* major minor)
-                                6)
-                     (draw-text 0 (+ +top+ +height+ 2) "block 0" 6)
-                     (draw-text 160 (+ +top+ +height+ 2) "block 1" 6)
-                     (draw-text 0 192 "Space pauses the card   Esc ends" 6)
+                     (graphics-text 0 0 (format nil "DMA scope: ~Xh IRQ ~D DMA ~D, DSP ~D.~2,'0D"
+                                                *blaster-port* *blaster-irq* *blaster-dma*
+                                                major minor)
+                                    6)
+                     (graphics-text 0 (+ +top+ +height+ 2) "block 0" 6)
+                     (graphics-text 160 (+ +top+ +height+ 2) "block 1" 6)
+                     (graphics-text 0 192 "Space pauses the card   Esc ends" 6)
                      (fill-half 0) (fill-half 1)
-                     (set-vector vector (code-selector) (sap-int (handler-code)))
-                     (outb #x21 (logandc2 old-mask (ash 1 *irq*)))  ; let the interrupt through
-                     (dma-start *dma* start (* 2 +block+))
-                     (dsp-write #xD1)                               ; speaker on
-                     (dsp-write #x40) (dsp-write (- 256 (round 1000000 rate)))
-                     (dsp-write #x48) (dsp-write (lo (1- +block+))) (dsp-write (hi (1- +block+)))
-                     (dsp-write #x1C)                               ; go: 8 bits, auto-initialize
+                     (dma-start *blaster-dma* start (* 2 +block+))
+                     (blaster-write #xD1)                           ; speaker on
+                     (blaster-write #x40) (blaster-write (- 256 (round 1000000 rate)))
+                     (blaster-write #x48)
+                     (blaster-write (lo (1- +block+))) (blaster-write (hi (1- +block+)))
+                     (blaster-write #x1C)                           ; go: 8 bits, auto-initialize
                      (loop
                        ;; Interrupt N means block N (0, 1, 0, 1 ...) has been
                        ;; played and is free for new samples.
-                       (loop while (/= handled (interrupts))
+                       (loop while (/= handled (blaster-interrupts))
                              do (setf refilled (mod handled 2))
                                 (fill-half refilled)
                                 (incf handled))
-                       (let* ((address (dma-address *dma*))
-                              (count (dma-count *dma*))
+                       (let* ((address (dma-address *blaster-dma*))
+                              (count (dma-count *blaster-dma*))
                               (offset (logand (- address start) #xFFFF))
                               (reading (if (< offset +block+) 0 1)))
                          (unless (= address last-address)
                            (incf steps) (setf last-address address))
                          (wait-retrace)
                          (draw-scope buffer (min 319 (floor (* offset 320) (* 2 +block+))) refilled)
-                         (draw-text 0 132 (format nil "address ~4,'0Xh = start ~4,'0Xh + ~4D"
-                                                  address (logand start #xFFFF) offset)
-                                    7)
-                         (draw-text 0 142 (format nil "count   ~4,'0Xh = ~4D bytes to go, less 1"
-                                                  count count)
-                                    7)
-                         (draw-text 0 152 (format nil "page    ~2,'0Xh   the card reads block ~D"
-                                                  (ldb (byte 8 16) start) reading)
-                                    7)
-                         (draw-text 0 166 (format nil "interrupts ~4D   Lisp refilled block ~A"
-                                                  handled (or refilled "-"))
-                                    7)
-                         (draw-text 0 176 (if paused
-                                              "paused: DSP command D0h; D4h goes on    "
-                                              (format nil "~6,1F s of tune sent to the buffer   "
-                                                      (/ (* handled +block+) (float rate))))
-                                    6))
+                         (graphics-text 0 132
+                                        (format nil "address ~4,'0Xh = start ~4,'0Xh + ~4D"
+                                                address (logand start #xFFFF) offset)
+                                        7)
+                         (graphics-text 0 142
+                                        (format nil "count   ~4,'0Xh = ~4D bytes to go, less 1"
+                                                count count)
+                                        7)
+                         (graphics-text 0 152
+                                        (format nil "page    ~2,'0Xh   the card reads block ~D"
+                                                (ldb (byte 8 16) start) reading)
+                                        7)
+                         (graphics-text 0 166
+                                        (format nil "interrupts ~4D   Lisp refilled block ~A"
+                                                handled (or refilled "-"))
+                                        7)
+                         (graphics-text 0 176
+                                        (if paused
+                                            "paused: DSP command D0h; D4h goes on    "
+                                            (format nil "~6,1F s of tune sent to the buffer   "
+                                                    (/ (* handled +block+) (float rate))))
+                                        6))
                        (incf frames)
                        (when (key-pressed-p)
                          (let ((key (get-key)))
                            (cond ((eql key #\Space)
                                   (setf paused (not paused))
-                                  (dsp-write (if paused #xD0 #xD4)))
+                                  (blaster-write (if paused #xD0 #xD4)))
                                  (t (return)))))))
-                (dsp-write #xD0) (dsp-write #xDA) (dsp-write #xD3)  ; pause, end, speaker off
-                (dma-stop *dma*)
-                (outb #x21 (logior (logand (inb #x21) (lognot (ash 1 *irq*)))
-                                   (logand old-mask (ash 1 *irq*))))    ; the mask bit as it was
-                (set-vector vector old-selector old-offset)
-                (dsp-reset))))))
+                ;; pause, end, speaker off
+                (blaster-write #xD0) (blaster-write #xDA) (blaster-write #xD3)
+                (dma-stop *blaster-dma*))))))
       (let ((seconds (/ (- (ticks) start-ticks) 18.2)))
         (format t "~&~D interrupts in ~,1F s (one every ~D samples at ~D a second: ~,2F s);~%~
                    ~D frames drawn, the DMA address seen at ~D different places.~%"

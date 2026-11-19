@@ -42,18 +42,21 @@ load what you want:
 | `ports.lisp` | `inb`, `outb`, `inw`, `outw`, `inl`, `outl`, `cmos` |
 | `dos.lisp` | `real-int` (real-mode interrupts through DPMI), `dos-alloc`, `dos-free`, `dos-scratch`, `dos-string`, `linear`, `without-break-checking` (Ctrl-C as a key), `catching-interrupt` (Ctrl-Break) |
 | `cpuid.lisp` | `cpuid` |
-| `memory.lisp` | `peek`, `peek16`, `peek32` |
+| `memory.lisp` | `peek`, `peek16`, `peek32`; `map-physical`, `unmap-physical`, `with-physical-memory`: a device's memory made addressable |
 | `interrupts.lisp` | `get-vector`, `set-vector`, `code-selector`, `data-selector` |
 | `text.lisp` | `text-put`, `text-box`, `save-text-screen`, `get-key`, `text-input`: text mode by direct video memory |
 | `critical.lisp` | `catch-critical-errors`, `critical-error`: DOS device errors without "Abort, Retry, Fail?" |
 | `dialog.lisp` | `restart-dialog`, `dialog-ask`: choose a restart from a box on the screen |
 | `hotkey.lisp` | `install-hotkey`, `remove-hotkeys`, `poll-hotkeys`: keys taken through the BIOS keyboard intercept |
-| `video.lisp` | `video-mode`, `with-video-mode`, `set-palette`, `rainbow-palette`, `plot`, `draw-line`, `*vga*`, `vesa-set-mode` |
-| `input.lisp` | `ticks`, `wait-tick`, `key-pressed-p`, `wait-key`, `finish` |
+| `video.lisp` | `video-mode`, `with-video-mode`, `set-palette`, `rainbow-palette`, `plot`, `draw-line`, `*vga*`, `vesa-set-mode`, `vesa-mode-info` |
+| `gtext.lisp` | `graphics-text`, `draw-glyphs`, `glyph-row`: text in the graphics modes, in the BIOS's 8 by 8 characters |
+| `modex.lisp` | `mode-x`, `mode-x-text`, `vga-planes`, `vga-display-start`, `vga-sequencer`, `vga-crtc`, `vga-graphics`, `vga-attribute`: the VGA's registers, and 320x240 in planes |
+| `input.lisp` | `ticks`, `wait-tick`, `key-pressed-p`, `wait-key`, `finish`; `timer-count`, `wait-frame`: time finer than the tick |
 | `sound.lisp` | `speaker-on`, `speaker-off`, `speaker-beep`: the PC speaker |
 | `mouse.lisp` | `mouse-init`, `mouse-position`, `mouse-cell`, `mouse-pixel`, `mouse-show`, `mouse-hide`: the mouse driver |
 | `disk.lisp` | `dos-read-sectors`, `bios-read-sectors`: disks, a sector at a time |
 | `dma.lisp` | `dma-start`, `dma-stop`, `dma-address`, `dma-count`, `with-dma-memory`: the DMA controllers |
+| `blaster.lisp` | `blaster-present-p`, `blaster-write`, `blaster-read`, `blaster-version`, `with-blaster-interrupt`, `blaster-interrupts`: the Sound Blaster's settings, its processor and its interrupt |
 | `pci.lisp` | `pci-read`, `pci-write`, `pci-devices`: PCI configuration space |
 | `serial.lisp` | `serial-open`, `serial-read-byte`, `serial-write-string`: serial ports, polled |
 | `init.lisp` | `doslib-init`, run at load and whenever a saved core starts |

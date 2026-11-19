@@ -58,28 +58,9 @@
 (deftype bytes () '(simple-array (unsigned-byte 8) (*)))
 (defun make-bytes (n) (make-array n :element-type '(unsigned-byte 8) :initial-element 0))
 
-;;; ---- time, finer than the BIOS's 18.2 ticks a second
-(defconstant +clocks-a-second+ 1193182)
-(defvar *clock* 0 "The last time CLOCK gave.")
-(defun clock ()
-  "The time in the timer chip's clocks, 1,193,182 to the second: the BIOS's
-count of ticks, and how far counter 0 has got through the 65,536 clocks of
-this one."
-  (loop
-    (let ((tick (ticks)))
-      (outb #x43 #xC2)                  ; read back counter 0: its status, then its count
-      (let* ((status (inb #x40)) (low (inb #x40))
-             (gone (logand (- (+ low (* 256 (inb #x40)))) #xFFFF))
-             (now (+ (* tick 65536)
-                     (if (= (logand status 6) 6)
-                         ;; mode 3, a square wave: it counts down twice a tick, by twos,
-                         ;; and its output (bit 7) is high the first time
-                         (+ (if (logbitp 7 status) 0 32768) (floor gone 2))
-                         gone))))       ; mode 2: once a tick, by ones
-        ;; The counter can start again a moment before the BIOS has counted the
-        ;; tick, and then the time seems to go back by one tick: read again.
-        (unless (or (/= tick (ticks)) (< -65537 (- now *clock*) 0))
-          (return (setf *clock* now)))))))
+;;; (Time finer than the BIOS's 18.2 ticks a second is the library's: TIMER-COUNT,
+;;; src/input.lisp.)
+
 ;;; ---- the sprite
 (defun ball ()
   "The built-in sprite: a red ball with a highlight, colour 0 around it."
@@ -102,7 +83,7 @@ it is empty)."
         sprite
         (ball))))
 
-;;; ---- the blitter in Lisp, and text.  DEST is the address of the picture.
+;;; ---- the blitter in Lisp.  DEST is the address of the picture.
 (defun blit (dest sprite x y)
   "Draw SPRITE with its corner at X, Y, leaving out colour 0."
   (declare (type system-area-pointer dest) (type bytes sprite) (type (unsigned-byte 16) x y)
@@ -115,24 +96,6 @@ it is empty)."
           (unless (zerop colour) (setf (sap-ref-8 dest (+ at column)) colour)))
         (incf i))
       (incf at +width+))))
-
-(defun draw-text (dest x y string colour)
-  "STRING in the BIOS's 8 by 8 characters (they are in the ROM, at FFA6Eh),
-on a black bar."
-  (declare (type system-area-pointer dest) (type (unsigned-byte 16) x y) (fixnum colour)
-           (simple-string string)
-           (optimize speed (safety 0)))
-  (let ((font (int-sap #xFFA6E)))
-    (dotimes (i (min (length string) 40))
-      (let ((code (logand (char-code (char string i)) 127)))
-        (dotimes (row 8)
-          (let ((bits (sap-ref-8 font (+ (* 8 code) row)))
-                (at (+ x (* 8 i) (* +width+ (+ y row)))))
-            (declare (fixnum at))
-            (dotimes (column 8)
-              (setf (sap-ref-8 dest (+ at column))
-                    (if (logbitp (- 7 column) bits) colour 0)))))))))
-
 
 ;;; ---- the compiler
 (defun compile-sprite (sprite)
@@ -215,40 +178,41 @@ into 16 lines of ordinary memory, over a pattern, and the two are compared."
         (unwind-protect
              (with-video-mode (#x13)
                (setf same (same-pixels-p sprite code))
-               (draw-text screen 0 0 (text "A sprite of ~D pixels, compiled:"
-                                           (count 0 sprite :test #'/=))
-                          15)
-               (draw-text screen 0 8 (text "~D instructions, ~:D bytes of code" (+ stores 4) bytes)
-                          15)
-               (draw-text screen +lisp-x+ 20 "Lisp blitter" 14)
-               (draw-text screen +compiled-x+ 20 "Compiled sprite" 14)
-               (draw-text screen 296 192 "Esc" 7)
+               (graphics-text 0 0 (text "A sprite of ~D pixels, compiled:"
+                                        (count 0 sprite :test #'/=))
+                              15)
+               (graphics-text 0 8 (text "~D instructions, ~:D bytes of code" (+ stores 4) bytes)
+                              15)
+               (graphics-text +lisp-x+ 20 "Lisp blitter" 14)
+               (graphics-text +compiled-x+ 20 "Compiled sprite" 14)
+               (graphics-text 296 192 "Esc" 7)
                (let ((lisp-seed 1) (compiled-seed 1)
                      (lisp-clocks 0) (compiled-clocks 0) (lisp-sprites 0) (compiled-sprites 0))
                  (loop
                    (when (and (key-pressed-p) (eql (get-key) #\Escape)) (return))
-                   (let ((start (clock)) middle)
+                   (let ((start (timer-count)) middle)
                      (setf lisp-seed (lisp-turn screen sprite lisp-seed +lisp-turn+)
-                           middle (clock)
+                           middle (timer-count)
                            compiled-seed (compiled-turn (sap-int screen) code compiled-seed
                                                         +compiled-turn+))
-                     (let ((end (clock)))
+                     (let ((end (timer-count)))
                        (when (<= start middle end)              ; (not over midnight)
                          (incf lisp-clocks (- middle start)) (incf lisp-sprites +lisp-turn+)
                          (incf compiled-clocks (- end middle))
                          (incf compiled-sprites +compiled-turn+))))
                    ;; about twice a second, say how it is going
-                   (when (and (> (+ lisp-clocks compiled-clocks) (floor +clocks-a-second+ 2))
+                   (when (and (> (+ lisp-clocks compiled-clocks) (floor +timer-hz+ 2))
                               (> lisp-clocks 0) (> compiled-clocks 0))
-                     (setf lisp-rate (round (* lisp-sprites +clocks-a-second+) lisp-clocks)
-                           compiled-rate (round (* compiled-sprites +clocks-a-second+)
+                     (setf lisp-rate (round (* lisp-sprites +timer-hz+) lisp-clocks)
+                           compiled-rate (round (* compiled-sprites +timer-hz+)
                                                 compiled-clocks))
-                     (draw-text screen +lisp-x+ 28 (text "~9:D a second" lisp-rate) 15)
-                     (draw-text screen +compiled-x+ 28 (text "~9:D a second" compiled-rate) 15)
-                     (draw-text screen 0 192
-                                (text "~:[THE PIXELS DIFFER!~;Same pixels~], ~,1F times as fast "
-                                      same (/ compiled-rate (max 1.0 (float lisp-rate))))
-                                (if same 10 12))
+                     (graphics-text +lisp-x+ 28 (text "~9:D a second" lisp-rate) 15)
+                     (graphics-text +compiled-x+ 28 (text "~9:D a second" compiled-rate) 15)
+                     (graphics-text
+                      0 192
+                      (text "~:[THE PIXELS DIFFER!~;Same pixels~], ~,1F times as fast "
+                            same (/ compiled-rate (max 1.0 (float lisp-rate))))
+                      (if same 10 12))
                      (setf lisp-clocks 0 compiled-clocks 0 lisp-sprites 0 compiled-sprites 0)))))
           (free-alien (sap-alien code (* (unsigned 8)))))))
     (format t "~&compiled: the sprite is ~:D bytes of machine code~

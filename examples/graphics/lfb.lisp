@@ -43,7 +43,7 @@
 
 (defpackage #:doslib-examples.lfb
   (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
-  (:export #:main #:mode-info #:map-physical #:unmap-physical))
+  (:export #:main #:mode-info))
 (in-package #:doslib-examples.lfb)
 
 (defconstant +mode+ #x101)
@@ -57,39 +57,11 @@
   "What the VESA BIOS says of MODE: the physical address of its linear
 framebuffer, the bytes in a line, and how many kilobytes one step of the
 window at A0000h moves it.  NIL if there is no such mode or no framebuffer."
-  (with-dos-memory (segment 256)
-    (let ((block (linear segment)))
-      (dotimes (i 256) (setf (sap-ref-8 (int-sap block) i) 0))
-      (let ((ax (real-int #x10 :ax #x4F01 :cx mode :es segment :di 0)))
-        (when (and (= ax #x004F)                        ; the call is known, and worked
-                   (logbitp 7 (peek16 block))           ; there is a linear framebuffer
-                   (plusp (peek32 (+ block #x28))))
-          (values (peek32 (+ block #x28))
-                  (peek16 (+ block #x10))
-                  (peek16 (+ block 4))))))))
-
-(defun map-physical (physical size)
-  "Make SIZE bytes of device memory at PHYSICAL addressable (DPMI 0800h).
-Returns the address, or NIL if the host would not."
-  ;; INT86 does not carry SI, which this call needs: so, a stub of its own.
-  (let* ((stub (machine-code #x53 #x56 #x57              ; push ebx / esi / edi
-                             #x8B #x4C #x24 #x10         ; mov ecx,[esp+16]   the address
-                             #x89 #xCB #xC1 #xEB #x10    ; mov ebx,ecx / shr ebx,16
-                             #x8B #x7C #x24 #x14         ; mov edi,[esp+20]   the size
-                             #x89 #xFE #xC1 #xEE #x10    ; mov esi,edi / shr esi,16
-                             #xB8 #x00 #x08 #x00 #x00    ; mov eax,0800h
-                             #xCD #x31                   ; int 31h
-                             #x72 10                     ; jc failed
-                             #xC1 #xE3 #x10 #x66 #x89 #xCB   ; shl ebx,16 / mov bx,cx
-                             #x89 #xD8 #xEB #x02         ; mov eax,ebx / jmp done
-                             #x31 #xC0                   ; failed: xor eax,eax
-                             #x5F #x5E #x5B #xC3))       ; done: pop edi / esi / ebx / ret
-         (address (alien-funcall (sap-alien stub (function unsigned unsigned unsigned))
-                                 physical size)))
-    (unless (zerop address) address)))
-(defun unmap-physical (address)
-  "Take away a mapping that MAP-PHYSICAL made (DPMI 0801h)."
-  (int86 #x31 :ax #x0801 :bx (ldb (byte 16 16) address) :cx (ldb (byte 16 0) address)))
+  (let ((info (vesa-mode-info mode)))                   ; step 1 is the library's
+    (when (and info (getf info :framebuffer))
+      (values (getf info :framebuffer) (getf info :line-bytes) (getf info :granularity)))))
+;;; (Steps 2 and 3 are the library's too: VESA-SET-MODE with :LINEAR, src/video.lisp, and
+;;; MAP-PHYSICAL and UNMAP-PHYSICAL, src/memory.lisp, which has the stub that calls DPMI.)
 
 ;;; ---- the picture: waves across, down and aslant, added up
 (defvar *wave* (let ((wave (make-array 1024 :element-type '(unsigned-byte 8))))
@@ -124,18 +96,12 @@ Returns the address, or NIL if the host would not."
       (set-palette i (round (* 63 s s)) (round (* 63 s s s s)) (round (* 63 (sqrt s)))))))
 
 (defun draw-text (picture x y string)
-  "STRING in the BIOS's 8 by 8 characters (they are in the ROM, at FFA6Eh),
-white on black, into PICTURE."
-  (let ((font (int-sap #xFFA6E)))
-    (dotimes (row 10)
-      (fill picture 0 :start (+ x -2 (* +width+ (+ y row -1)))
-                      :end (+ x 2 (* 8 (length string)) (* +width+ (+ y row -1)))))
-    (loop for c across string for cx from x by 8
-          do (dotimes (row 8)
-               (let ((bits (sap-ref-8 font (+ (* 8 (logand (char-code c) 127)) row))))
-                 (dotimes (column 8)
-                   (when (logbitp (- 7 column) bits)
-                     (setf (aref picture (+ cx column (* +width+ (+ y row)))) 128))))))))
+  "STRING in the BIOS's 8 by 8 characters, white on a black bar, into PICTURE."
+  (dotimes (row 10)
+    (fill picture 0 :start (+ x -2 (* +width+ (+ y row -1)))
+                    :end (+ x 2 (* 8 (length string)) (* +width+ (+ y row -1)))))
+  (with-pinned-objects (picture)        ; the library's letters, with nothing behind them
+    (draw-glyphs (vector-sap picture) (+ x (* +width+ y)) +width+ string 128 nil)))
 
 ;;; ---- to the screen, both ways
 (defun show-linear (picture screen line-bytes)
@@ -192,10 +158,7 @@ STEP is how many of the BIOS's units 64K is."
            (let ((screen (int-sap address)) (linear t) (time 0.0)
                  (counted 0) (counted-from (ticks)))
              (flet ((set-mode (linear keep)
-                      (unless (= (word16 (int86 #x10 :ax #x4F02
-                                                     :bx (logior +mode+ (if linear #x4000 0)
-                                                                 (if keep #x8000 0))))
-                                 #x004F)
+                      (unless (vesa-set-mode +mode+ :linear linear :keep keep)
                         (error "The VESA BIOS would not set mode ~Xh" +mode+))
                       (set-colours)))
                (draw-waves picture 0)
