@@ -29,14 +29,9 @@
 (defvar *undo* (make-array (* 320 +height+) :element-type '(unsigned-byte 8)))
 
 ;;; ---- the mouse
-(defun mouse-reset ()                   ; true if there is a mouse driver
-  (= (word16 (int86 #x33 :ax 0)) #xFFFF))
 (defun mouse ()                         ; x, y and the buttons (1 left, 2 right)
-  (multiple-value-bind (ax bx cx dx) (int86 #x33 :ax 3)
-    (declare (ignore ax))
-    (values (min 319 (ash (word16 cx) -1))      ; the driver counts 640 across in this mode
-            (min 199 (word16 dx))
-            (logand bx 3))))
+  (multiple-value-bind (x y buttons) (mouse-pixel)
+    (values (min 319 x) (min 199 y) (logand buttons 3))))
 (defun toggle-pointer (x y)             ; a cross, XORed in: doing it twice removes it
   (flet ((flip (px py)
            (when (and (< -1 px 320) (< -1 py 200))
@@ -133,7 +128,7 @@
 
 (defun paint ()
   (video-mode #x13)
-  (unless (mouse-reset)
+  (unless (mouse-init)
     (video-mode 3)
     (format t "~&There is no mouse driver.  Load CTMOUSE and try again.~%")
     (return-from paint nil))

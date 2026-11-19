@@ -335,57 +335,12 @@ volume (or :BAD if a bad cluster is among them)."
 ;;; ------------------------------------------------------------------------
 ;;; Reading a DOS drive.
 
-(defconstant +buffer-bytes+ 16384)
-(defvar *buffer* nil)                   ; segment of DOS memory: a 16-byte packet, then data
-(defvar *buffer-session* -1)            ; DOS memory does not outlive the process (a saved core)
-(defun buffer ()
-  (unless (and *buffer* (= *buffer-session* *session*))
-    (setf *buffer* (dos-alloc (+ 16 +buffer-bytes+)) *buffer-session* *session*))
-  *buffer*)
-
-(defun absolute-read (drive sector count method)
-  "Read COUNT sectors of DRIVE (0 = A:) into the buffer, in one of DOS's
-three ways.  Returns true if it worked, and DOS's error code if not."
-  (let* ((segment (buffer)) (packet (int-sap (linear segment))))
-    ;; The packet: sector number, count, and the far address of the data.
-    (setf (sap-ref-32 packet 0) sector (sap-ref-16 packet 4) count
-          (sap-ref-16 packet 6) 16 (sap-ref-16 packet 8) segment)
-    (multiple-value-bind (ax bx cx dx es ds flags)
-        (ecase method
-          (:small (real-int #x25 :ax drive :cx count :dx sector :ds segment :bx 16))
-          (:large (real-int #x25 :ax drive :cx #xFFFF :ds segment :bx 0))
-          (:fat32 (real-int #x21 :ax #x7305 :cx #xFFFF :dx (1+ drive) :si 0 :ds segment :bx 0)))
-      (declare (ignore bx cx dx es ds))
-      (values (not (logbitp 0 flags)) ax))))
-
 (defun drive-reader (drive)
-  "A reader for DOS drive DRIVE (0 = A:), having found out which way of reading it works."
-  ;; Function 36h (free space) says whether the drive exists and how big it
-  ;; is: which matters, because a DOS that does not expect the packet form
-  ;; on a small volume would take CX = FFFFh as a count of sectors to read.
-  (multiple-value-bind (ax bx cx dx) (int86 #x21 :ax #x3600 :dx (1+ drive))
-    (declare (ignore bx cx))
-    (when (= (word16 ax) #xFFFF)
-      (error "There is no drive ~C:, or no disk in it" (code-char (+ 65 drive))))
-    (let* ((sectors (* (word16 ax) (word16 dx)))
-           (method (find-if (lambda (method) (absolute-read drive 0 1 method))
-                            (if (< sectors 65536) '(:small :large :fat32) '(:large :fat32)))))
-      (unless method
-        (error "DOS cannot read sectors from drive ~C: (a network drive or a CD?)"
-               (code-char (+ 65 drive))))
-      (lambda (sector count bytes-per-sector)
-        (let ((result (make-array (* count bytes-per-sector) :element-type '(unsigned-byte 8)))
-              (most (floor +buffer-bytes+ bytes-per-sector))    ; what the buffer holds
-              (data (int-sap (linear (buffer) 16))))
-          (loop for done from 0 below count by most
-                for n = (min most (- count done))
-                do (multiple-value-bind (ok code) (absolute-read drive (+ sector done) n method)
-                     (unless ok
-                       (error "DOS error ~4,'0Xh reading sector ~D of ~C:" code (+ sector done)
-                              (code-char (+ 65 drive)))))
-                   (dotimes (i (* n bytes-per-sector))
-                     (setf (aref result (+ (* done bytes-per-sector) i)) (sap-ref-8 data i))))
-          result)))))
+  "A reader for DOS drive DRIVE (0 = A:).  The library finds out which of
+DOS's three ways of reading sectors works on it (src/disk.lisp)."
+  (drive-read-method drive)             ; no such drive, or unreadable: an error now
+  (lambda (sector count bytes-per-sector)
+    (dos-read-sectors drive sector :count count :bytes-per-sector bytes-per-sector)))
 
 (defun open-named (name)
   "NAME: NIL for the current drive, a drive letter (\"C\", \"c:\"), or a disk image's file name."
@@ -393,7 +348,7 @@ three ways.  Returns true if it worked, and DOS's error code if not."
     (cond ((and name (> (length name) 2)) (open-volume name (image-reader name)))
           (t (let ((drive (if (and name (plusp (length name)))
                               (- (char-code (char-upcase (char name 0))) 65)
-                              (lo (int86 #x21 :ax #x1900)))))   ; the current drive
+                              (current-drive))))
                (unless (<= 0 drive 25) (error "~S is not a drive letter" name))
                (open-volume (format nil "~C:" (code-char (+ 65 drive))) (drive-reader drive)))))))
 

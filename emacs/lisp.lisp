@@ -276,3 +276,97 @@ anything longer in the buffer *output*."
 (define-command eval-buffer () "Evaluate the whole buffer." (eval-and-show (buffer-string)))
 (define-command eval-expression () "Read a Lisp expression in the minibuffer and evaluate it."
   (eval-and-show (read-string "Eval: ")))
+
+;;; M-. goes to where something is defined; M-, comes back.  The definition
+;;; is looked for as a line that begins "(def... NAME": in this buffer, in
+;;; the other buffers, in the file the compiler remembers for a function
+;;; that is loaded, and in the Lisp files beside the one being edited.
+(defvar *definition-stack* '() "Where M-. was typed from: (buffer line col), newest first.")
+(defun name-at-point ()
+  "The symbol's name that point is in or just after, as it is written; or NIL."
+  (let* ((text (current-line))
+         (start (loop for i downfrom (min (point-col) (length text)) above 0
+                      when (delimiter-p (char text (1- i))) return i
+                      finally (return 0)))
+         (end (or (position-if #'delimiter-p text :start start) (length text))))
+    (and (< start end) (string-left-trim "#'`,@" (subseq text start end)))))
+(defun bare-name (name)
+  "NAME without a package prefix."
+  (let ((colon (position #\: name :from-end t)))
+    (if (and colon (< (1+ colon) (length name))) (subseq name (1+ colon)) name)))
+(defun definition-line-p (text name)
+  "Does the line TEXT begin a definition of NAME?  (defun name, (defstruct (name,
+(defun (setf name), (define-command name, (define-example \"name\" ..."
+  (when (and (> (length text) 5) (string-equal "(def" text :end2 4))
+    (let* ((space (position #\Space text))
+           (start (and space (position #\Space text :start space :test-not #'char=))))
+      (when start
+        (when (char= (char text start) #\() (incf start))
+        (when (and (< (+ start 5) (length text)) (string-equal "setf " text :start2 start :end2 (+ start 5)))
+          (incf start 5))
+        (when (and (< start (length text)) (char= (char text start) #\")) (incf start))
+        (let ((end (or (position-if #'delimiter-p text :start start) (length text))))
+          (string-equal name (bare-name (subseq text start end))))))))
+(defun definition-in-buffer (name b)
+  "The number of the line of buffer B that defines NAME, or NIL."
+  (loop for i from 0 below (nlines b)
+        when (definition-line-p (line-text i b) name) return i))
+(defun definition-in-file (name file)
+  (ignore-errors
+   (with-open-file (in file :external-format :latin-1)
+     (loop for line = (read-line in nil) for i from 0
+           while line
+           when (definition-line-p line name) return i))))
+(defun remembered-source-file (name)
+  "The file a loaded function or macro called NAME was compiled from, if the
+compiler recorded one and it is still there."
+  (ignore-errors
+   (let* ((colon (position #\: name))
+          (package (if (and colon (plusp colon))
+                       (find-package (string-upcase (subseq name 0 colon)))
+                       *repl-package*))
+          (symbol (and package (find-symbol (string-upcase (bare-name name)) package)))
+          (function (and symbol (or (macro-function symbol)
+                                    (and (fboundp symbol) (fdefinition symbol)))))
+          (code (and function (sb-kernel:fun-code-header (sb-kernel:%fun-fun function))))
+          (file (and code (sb-c::debug-source-namestring
+                           (sb-c::debug-info-source (sb-kernel:%code-debug-info code))))))
+     (and file (probe-file file) (namestring file)))))
+(defun find-definition-place (name)
+  "Where NAME is defined: a buffer and a line number, or NIL."
+  (let ((bare (bare-name name)))
+    (flet ((in-buffer (b) (let ((line (definition-in-buffer bare b))) (and line (cons b line))))
+           (in-file (file)
+             (let ((line (definition-in-file bare file)))
+               (and line (cons (find-file-buffer (namestring file)) line)))))
+      (or (in-buffer *buf*)
+          (some #'in-buffer (remove *buf* *buffers*))
+          (let ((file (remembered-source-file name))) (and file (in-file file)))
+          (and (buf-file *buf*)
+               (some #'in-file
+                     (ignore-errors
+                      (append (directory (merge-pathnames "*.lisp" (buf-file *buf*)))
+                              (directory (merge-pathnames "*.lsp" (buf-file *buf*)))))))))))
+(define-command find-definition ()
+  "Go to the definition of a function, macro, variable or command: by
+default the one whose name point is on.  M-, comes back."
+  (let* ((default (name-at-point))
+         (name (string-trim " " (read-string "Find definition of: " :initial (or default ""))))
+         (place (and (string/= name "") (find-definition-place name))))
+    (unless place (editor-error "No definition of ~A found" name))
+    (push (list *buf* (point-line) (point-col)) *definition-stack*)
+    (select-buffer (car place))
+    (goto (cdr place) 0)
+    (recenter)
+    (message "~A, line ~D" (buf-name *buf*) (1+ (cdr place)))))
+(define-command pop-definition ()
+  "Go back to where M-. was last typed."
+  (let ((place (pop *definition-stack*)))
+    (unless place (editor-error "No place to go back to"))
+    (destructuring-bind (b line col) place
+      (unless (member b *buffers*) (editor-error "That buffer has been killed"))
+      (select-buffer b)
+      (goto line col)
+      (recenter))))
+(bind-key "M-." 'find-definition)
+(bind-key "M-," 'pop-definition)

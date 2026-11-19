@@ -24,6 +24,11 @@
                (:file "text")
                (:file "critical")
                (:file "dialog")
+               (:file "sound")
+               (:file "mouse")
+               (:file "disk")
+               (:file "pci")
+               (:file "serial")
                (:file "init")))
 
 (defsystem "doslib/examples"
@@ -45,6 +50,7 @@
                              (:file "plasma")
                              (:file "raycast")
                              (:file "raytrace")
+                             (:file "sprite")
                              (:file "stars")
                              (:file "textfx")
                              (:file "turtle")
@@ -83,6 +89,7 @@
                (:module "sound"
                 :depends-on ("package")
                 :components ((:file "adlib")     ; and the notation both use
+                             (:file "blaster")
                              (:file "speaker" :depends-on ("adlib"))))
                (:module "network"
                 :depends-on ("package")

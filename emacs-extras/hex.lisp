@@ -299,45 +299,22 @@ the hex column a hex digit replaces half of it, and other letters are commands."
 ;;; which works depends on the volume: a packet with a 32-bit sector number
 ;;; (CX = FFFFh; volumes over 32MB), interrupt 21h function 7305h (FAT32,
 ;;; which interrupt 25h refuses), and the original form with the sector in
-;;; DX (floppies and small volumes).  They are tried in that order.  The
-;;; packet and the sector are in memory below 1MB, where DOS can reach them.
-(defvar *hex-dos-memory* nil "Segment of 1K of DOS memory: a packet, then (at 16) a sector.")
+;;; DX (floppies and small volumes).  The library's DOS-READ-SECTORS finds
+;;; out which (src/disk.lisp).
 (defvar *hex-sector-method* nil "Which of the three ways read the last sector, for the curious.")
-(defun hex-forget-dos-memory () (setf *hex-dos-memory* nil))
-(pushnew 'hex-forget-dos-memory sb-ext:*save-hooks*)      ; it does not survive into a saved core
 (defun hex-read-sector (drive sector)
   "Sector SECTOR of DRIVE (0 is A:, 2 is C:) as a vector of 512 bytes."
-  (let* ((segment (or *hex-dos-memory* (setf *hex-dos-memory* (dos-alloc 1024))))
-         (memory (int-sap (linear segment)))
-         (code 0))
-    (catch-critical-errors)             ; an empty drive: no "Abort, Retry, Fail?" on the screen
-    (critical-error)                    ; forget any old one
-    (flet ((packet ()
-             (setf (sap-ref-32 memory 0) sector (sap-ref-16 memory 4) 1
-                   (sap-ref-16 memory 6) 16 (sap-ref-16 memory 8) segment))
-           (ok (method ax flags)
-             (if (logbitp 0 flags)
-                 (progn (setf code ax) nil)
-                 (setf *hex-sector-method* method))))
-      (unless (or (progn (packet)
-                         (multiple-value-bind (ax bx cx dx es ds flags)
-                             (real-int #x25 :ax drive :cx #xFFFF :bx 0 :ds segment)
-                           (declare (ignore bx cx dx es ds))
-                           (ok "INT 25h, packet" ax flags)))
-                  (progn (packet)
-                         (multiple-value-bind (ax bx cx dx es ds flags)
-                             (real-int #x21 :ax #x7305 :dx (1+ drive) :cx #xFFFF :si 0 :bx 0 :ds segment)
-                           (declare (ignore bx cx dx es ds))
-                           (ok "INT 21h AX=7305h" ax flags)))
-                  (and (< sector 65536)
-                       (multiple-value-bind (ax bx cx dx es ds flags)
-                           (real-int #x25 :ax drive :cx 1 :dx sector :bx 16 :ds segment)
-                         (declare (ignore bx cx dx es ds))
-                         (ok "INT 25h" ax flags))))
-        (editor-error "Can't read sector ~D of ~C: (~A; DOS error ~4,'0Xh)" sector
-                      (code-char (+ 65 drive)) (or (critical-error) "no such sector or drive") code)))
-    (let ((bytes (make-array 512 :element-type '(unsigned-byte 8))))
-      (dotimes (i 512 bytes) (setf (aref bytes i) (sap-ref-8 memory (+ 16 i)))))))
+  (catch-critical-errors)               ; an empty drive: no "Abort, Retry, Fail?" on the screen
+  (unwind-protect
+       (progn
+         (critical-error)               ; forget any old one
+         (handler-case
+             (prog1 (dos-read-sectors drive sector)
+               (setf *hex-sector-method*
+                     (ecase (drive-read-method drive)
+                       (:large "INT 25h, packet") (:fat32 "INT 21h AX=7305h") (:small "INT 25h"))))
+           (disk-error (e) (editor-error "~A" e))))
+    (release-critical-errors)))
 (defun hex-sector-name (drive sector) (format nil "*sector ~C:~D*" (code-char (+ 65 drive)) sector))
 (define-command hex-disk-sector ()
   "Show one sector of a DOS drive (A, C, D...), read with interrupt 25h.  n and p step."

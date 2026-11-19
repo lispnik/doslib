@@ -30,7 +30,9 @@
 (defvar *hotkey-old-vector* nil)        ; (segment . offset) while we are hooked in
 (defvar *in-hotkey* nil)
 
-(defun hotkeys-installed-p () (and *hotkey-old-vector* t))
+(defun hotkeys-installed-p ()
+  "Is any hot key installed?"
+  (and *hotkey-old-vector* t))
 
 (defvar *hotkey-segment* nil)           ; the handler and its tables, in DOS memory
 (defun hook-keyboard ()
@@ -80,6 +82,7 @@ call FUNCTION, with no arguments, the next time the program polls."
   nil)
 
 (defun remove-hotkey (scan-code)
+  "Give the key with SCAN-CODE back to the keyboard."
   (when *hotkey-old-vector*
     (setf (sap-ref-8 *hotkey-table* scan-code) 0)
     (remhash scan-code *hotkey-functions*)
@@ -91,6 +94,7 @@ call FUNCTION, with no arguments, the next time the program polls."
   (and *hotkey-old-vector* (/= 0 (sap-ref-8 *hotkey-pending* scan-code))))
 
 (defun clear-pending-hotkeys ()
+  "Forget hot keys that have been pressed but not yet acted on."
   (when *hotkey-old-vector*
     (dotimes (i 256) (setf (sap-ref-8 *hotkey-pending* i) 0))
     (setf (sap-ref-32 *hotkey-any* 0) 0)))

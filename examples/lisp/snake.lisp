@@ -15,7 +15,6 @@
     (setf (sap-ref-8 *text* offset) char (sap-ref-8 *text* (1+ offset)) attribute)))
 (defun say (x y attribute string)
   (loop for c across string for i from x do (put i y (char-code c) attribute)))
-(defun ticks () (peek32 #x46C))
 (defun read-key ()                      ; => BIOS scan code, or NIL
   (when (key-pressed-p) (hi (int86 #x16 :ax 0))))
 (defun snake ()

@@ -43,6 +43,16 @@ command that takes the argument itself (its TAKES-PREFIX property)."
       (message "Quit"))
     (error (e) (setf *unread* '()) (message "~A" e)))   ; an error also stops a macro
   (setf *last-command* *this-command*))
+(defun editor-interrupted (condition hook)
+  "The debugger hook while the editor runs.  Ctrl-Break (or Ctrl-Alt-Shift)
+outside an evaluation stops the command that is running, as C-g would if it
+could be typed, and the editor carries on.  (Inside an evaluation the hook is
+EDITOR-DEBUGGER, which shows the interrupted code's restarts.)"
+  (declare (ignore hook))
+  (when (typep condition 'sb-sys:interactive-interrupt)
+    (signal 'quit-command)              ; RUN-COMMAND takes it, if a command is running
+    (let ((carry-on (find-restart 'continue condition)))
+      (when carry-on (invoke-restart carry-on)))))
 (defun emacs (&optional file)
   "Run the editor until C-x C-c."
   (unless (find-buf "*scratch*")
@@ -62,15 +72,16 @@ command that takes the argument itself (its TAKES-PREFIX property)."
     (error (e) (message "Error in EMACSRC.LSP: ~A" e)))
   (when file (visit (namestring file)))
   ;; C-c is a key here, and must not be DOS's signal to end the program
-  (without-break-checking
-    (catch 'exit-editor
-      (loop
-        (handler-case (redisplay) (error (e) (draw-echo (format nil "Redisplay: ~A" e))))
-        (setf *macro-mark* (length *macro-keys*))
-        (let ((*prefix-argument* (let ((*idle* t)) (read-prefix))))
-          (multiple-value-bind (command keys) (let ((*idle* t)) (read-command))
-            (setf *message* nil)
-            (run-command command keys))))))
+  (let ((sb-ext:*invoke-debugger-hook* #'editor-interrupted))
+    (without-break-checking
+     (catch 'exit-editor
+       (loop
+         (handler-case (redisplay) (error (e) (draw-echo (format nil "Redisplay: ~A" e))))
+         (setf *macro-mark* (length *macro-keys*))
+         (let ((*prefix-argument* (let ((*idle* t)) (read-prefix))))
+           (multiple-value-bind (command keys) (let ((*idle* t)) (read-command))
+             (setf *message* nil)
+             (run-command command keys)))))))
   (when *leave-display* (funcall *leave-display*))
   (video-mode 3)
   (values))

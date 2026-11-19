@@ -79,6 +79,7 @@ class Machine:
                    # the second display the editor's M-x live uses, and silent sound cards
                    '-device', 'secondary-vga,id=vga2',
                    '-audiodev', 'none,id=snd', '-machine', 'pcspk-audiodev=snd', '-device', 'adlib,audiodev=snd',
+                   '-device', 'sb16,audiodev=snd',
                    '-drive', 'file=boot.img,format=raw,if=ide,index=0',
                    '-drive', 'file=data.img,format=raw,if=ide,index=1'] + self.options
         log = open(os.path.join(self.work, 'qemu.log'), 'w')
@@ -136,6 +137,12 @@ class Machine:
         for name in names:
             self.monitor('sendkey %s 40' % name)
             time.sleep(pause)
+
+    def hold(self, name, milliseconds=400):
+        """Press a key or a chord and keep it down for a while: long enough
+        for something that looks at the keyboard 18 times a second to see it."""
+        self.monitor('sendkey %s %d' % (name, milliseconds))
+        time.sleep(milliseconds / 1000 + 0.2)
 
     def type(self, text):
         self.key(*[KEYS.get(c) or ('shift-' + c.lower() if c.isupper() else c) for c in text])

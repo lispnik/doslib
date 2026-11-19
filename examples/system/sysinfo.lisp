@@ -8,8 +8,6 @@
   (:export #:main))
 (in-package #:doslib-examples.sysinfo)
 
-(defun cmos (register) (outb #x70 register) (inb #x71))
-(defun bcd (x) (+ (* 10 (ash x -4)) (logand x 15)))
 (defun reg-string (&rest words)         ; little-endian register dumps to text
   (with-output-to-string (s)
     (dolist (w words)

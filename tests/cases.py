@@ -25,6 +25,7 @@ from dosvm import Failure, DOS_PROMPT
 FILES = {
     'T2.TXT': 'one\ntwo\nthree\n',
     'T3.TXT': 'alpha beta\nalpha gamma\n',
+    'T4.TXT': 'one\ntwo\n',
 }
 
 
@@ -92,6 +93,17 @@ def text(name, *seen, **more):
 def picture(name, mode=0x13, colours=4, **more):
     """An example that draws until a key is pressed."""
     return example(name, ('gfx', mode, colours), **more)
+
+
+def click(session):
+    """Press and let go the left mouse button, one cell to the right of where it was."""
+    m = session.m
+    m.monitor('mouse_move 30 0')
+    time.sleep(0.5)
+    m.monitor('mouse_button 1')
+    time.sleep(0.5)
+    m.monitor('mouse_button 0')
+    time.sleep(0.5)
 
 
 def dos(name, *steps):
@@ -176,6 +188,7 @@ def all_cases():
 
         # ---- sound (the machine's cards are silent)
         example('adlib', ('see', 'AdLib card found'), ('see', 'Playing jacques'), ('see', 'C4 D4 E4 C4')),
+        example('blaster', ('see', 'DSP version'), ('see', 'interrupts handled', 60), leave=None),
         example('speaker', ('see', 'Playing ode'), ('see', 'E4 E4 F4 G4')),
 
         # ---- network: this computer is 10.0.2.2 to the DOS machine
@@ -204,7 +217,27 @@ def all_cases():
         example('ntp', ('wait', 20), internet=True),
         example('browse-gopher', ('see', 'Floodgap', 90), example='browse', internet=True, leave=('esc',)),
 
+        # the sprite editor: Space paints the cell under the pointer (the middle one, to
+        # begin with) in white, and so does the left button; S saves what was drawn
+        example('sprite', ('gfx', 0x13, 20), ('key', 'c'), ('wait', 1), ('key', 'spc'), ('wait', 1),
+                ('host', click), ('key', 's'), ('wait', 1)),
+        # ---- interrupting: Ctrl-Break, and Ctrl-Alt-Shift for keyboards without one
+        example('interrupt-loop', ('see', 'spinning'), ('hold', 'ctrl-pause'), ('see', 'spin was interrupted'),
+                example='spin', leave=None),
+        example('interrupt-chord', ('see', 'spinning'), ('hold', 'ctrl-alt-shift'), ('see', 'spin was interrupted'),
+                example='spin', leave=None),
+        example('interrupt-graphics', ('gfx', 0x13, 100), ('hold', 'ctrl-pause'), ('see', 'plasma was interrupted'),
+                example='plasma', leave=None),
+
         # ---- programs started from the DOS prompt
+        # with nothing to catch it, an interrupt is SBCL's debugger, and CONTINUE carries on
+        dos('interrupt-debugger', ('line', 'sbcl --noinform --eval "(loop)"'), ('wait', 6), ('hold', 'ctrl-pause'),
+            ('see', 'Interactive interrupt'), ('see', 'Return from SB-UNIX:SIGINT'),
+            ('line', '(sb-ext:exit)')),
+        # Ctrl-C reaches Lisp when DOS notices it, which is when the program next calls DOS
+        dos('interrupt-ctrl-c', ('line', 'sbcl --noinform --eval "(loop (print 1))"'), ('wait', 6), ('key', 'ctrl-c'),
+            ('see', 'Interactive interrupt'), ('line', '(sb-ext:exit)')),
+        dos('demo-arguments', ('line', 'demo speaker ?'), ('see', 'Tunes: ')),
         dos('demo', ('line', 'demo plasma'), ('gfx', 0x13, 100), ('key', 'esc')),
         dos('demo-menu', ('line', 'demo'), ('see', 'Example to run'), ('line', 'asm'),
             ('see', 'same bytes as the hand-written stub: T'), ('key', 'ret')),
@@ -221,6 +254,17 @@ def all_cases():
               ('key', 'ctrl-k', 'ctrl-k', 'ctrl-n', 'ctrl-y'),           # "one" goes below "two"
               ('type', '!'), ('key', 'ctrl-x', 'u'),                      # and a mistake is undone
               ('key', 'ctrl-x', 'ctrl-s'), ('see', 'Wrote')),
+        # the end of the buffer is after the file's last newline; the file gets no second one
+        emacs('emacs-final-newline', 'T4.TXT', ('see', 'Read 2 lines'),
+              ('key', 'shift-alt-dot'), ('type', 'three'),
+              ('key', 'ctrl-x', 'ctrl-s'), ('see', 'Wrote 3 lines')),
+        # M-. finds a definition: in a file the compiler remembers, then in the buffer itself
+        emacs('emacs-definition', '',
+              ('key', 'alt-dot'), ('see', 'Find definition of'), ('type', 'doslib-emacs:emacs'), ('key', 'ret'),
+              ('see', 'MAIN.LISP'), ('see', '(defun emacs (&optional file)'),
+              ('key', 'alt-comma'), ('see', '*scratch*'), ('gone', '(defun emacs (&optional file)'),
+              ('type', '(defun here () 1)'), ('key', 'ret', 'ret'), ('type', '(here'),
+              ('key', 'alt-dot'), ('see', 'Find definition of: here'), ('key', 'ret'), ('see', '*scratch*, line 4')),
         emacs('emacs-search', 'T3.TXT', ('see', 'gamma'),
               ('key', 'ctrl-s'), ('type', 'gamma'), ('key', 'ret'), ('type', '!'),
               ('key', 'shift-alt-comma', 'shift-alt-5'), ('see', 'Replace string'),
@@ -246,6 +290,12 @@ def all_cases():
               ('see', 'fire finished'),
               # the hot key again, now that an example has had the keyboard
               ('key', 'f12'), ('see', 'Lisp calculator'), ('key', 'esc'), ('gone', 'Lisp calculator')),
+        # an evaluation that never ends: Ctrl-Break opens the editor's debugger on it
+        emacs('emacs-interrupt', '', ('type', '(loop)'), ('key', 'ctrl-x', 'ctrl-e'), ('wait', 2),
+              ('hold', 'ctrl-pause'), ('see', 'Interactive interrupt'), ('see', 'Debugger: restart number'),
+              ('key', 'q'), ('gone', 'Debugger: restart number'),
+              ('hold', 'ctrl-alt-shift'), ('wait', 1),             # at rest: nothing to stop
+              ('key', 'shift-alt-semicolon'), ('type', '(* 6 7)'), ('key', 'ret'), ('see', '=> 42')),
         dict(kind='dos', name='emacs-web', steps=lambda host: emacs(
             '', '', *meta_x('browse-url'), ('see', 'Address'), ('type', 'http://10.0.2.2:%d/' % host.web_port),
             ('key', 'ret'), ('see', 'The first page'), ('key', 'tab', 'ret'), ('see', 'You have arrived'),
@@ -281,6 +331,18 @@ def text_mode_again(session):            # the VGA is 720 dots across in text mo
 
 
 # ---- what the tests must have left behind: (test, check of the stopped machine)
+def sprite_saved(machine, host):
+    found = machine.read('SBCL/SPRITE.DAT')
+    if found is None or len(found) != 256:
+        raise Failure('SPRITE.DAT was not saved')
+    white = [i for i, colour in enumerate(found) if colour == 15]
+    others = [i for i, colour in enumerate(found) if colour not in (0, 15)]
+    # the cleared sprite, with the middle cell (8, 8) painted by Space and at least one
+    # more, to its right, by the mouse button
+    if others or 8 + 16 * 8 not in white or len(white) < 2:
+        raise Failure('SPRITE.DAT has white at %s and other colours at %s' % (white, others[:8]))
+
+
 def file_is(name, expected):
     def check(machine, host):
         found = machine.read('SBCL/' + name)
@@ -300,5 +362,7 @@ AFTER = [
     ('ports', printed),
     ('emacs-edit', file_is('T1.TXT', b'Hello, DOS.\r\n(+ 40 2)\r\n')),
     ('emacs-kill-yank', file_is('T2.TXT', b'two\r\none\r\nthree\r\n')),
+    ('emacs-final-newline', file_is('T4.TXT', b'one\r\ntwo\r\nthree\r\n')),
+    ('sprite', sprite_saved),
     ('emacs-search', file_is('T3.TXT', b'delta beta\r\ndelta gamma!\r\n')),
 ]

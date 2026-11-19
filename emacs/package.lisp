@@ -62,6 +62,7 @@
           #:body-form-p #:indent-under #:lisp-indentation #:indent-line
           #:newline-and-indent #:minibuffer-stream #:*minibuffer-stream*
           #:*editor-restart* #:*debugged* #:editor-debugger #:eval-captured
+          #:find-definition #:pop-definition #:name-at-point #:editor-interrupted
           #:read-forms #:printed #:eval-and-show #:eval-last-sexp #:eval-defun
           #:eval-buffer #:eval-expression #:repl-buffer #:repl-emit
           #:repl-prompt #:repl-prompt-line #:repl-input #:repl-return

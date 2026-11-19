@@ -23,4 +23,29 @@ ALIEN-FUNCALL.")
           #:restore-text-screen #:get-key #:text-input
           #:catch-critical-errors #:release-critical-errors #:critical-error
           #:text-wrap #:restart-dialog #:dialog-ask
-          #:*session* #:saved-code #:code-address))
+          #:*session* #:saved-code #:code-address
+          ;; DOS memory
+          #:dos-free #:with-dos-memory #:dos-scratch #:dos-string #:dos-bytes
+          ;; interrupting the program
+          #:interrupt #:interrupts-supported-p #:interrupt-chord #:interrupt-count
+          #:catching-interrupt
+          ;; more ports
+          #:inw #:outw #:cmos #:bcd
+          #:ticks #:current-video-mode #:with-video-mode #:wait-retrace
+          #:vesa-set-mode #:vesa-set-bank
+          #:with-critical-errors-caught
+          ;; the speaker
+          #:+timer-hz+ #:speaker-on #:speaker-off #:speaker-divisor #:speaker-beep
+          ;; the mouse
+          #:mouse-driver-p #:mouse-init #:mouse-show #:mouse-hide #:with-mouse-hidden
+          #:mouse-position #:mouse-cell #:mouse-pixel #:mouse-move #:mouse-range
+          #:mouse-presses #:mouse-releases #:mouse-motion
+          ;; disks
+          #:disk-error #:disk-error-drive #:disk-error-sector #:disk-error-code
+          #:disk-error-reason #:current-drive #:drive-number #:drive-letter
+          #:drive-read-method #:dos-read-sectors #:bios-read-sectors
+          ;; PCI
+          #:pci-read #:pci-write #:pci-byte #:pci-word #:pci-present-p #:pci-devices
+          ;; serial ports
+          #:serial-port #:serial-open #:serial-byte-ready-p #:serial-read-byte
+          #:serial-write-byte #:serial-write-string #:serial-read-line))

@@ -22,17 +22,23 @@ that runs over several lines would become part of the string."
         (setf (buf-file b) name (buf-mode b) (mode-for-file name))
         (cond ((probe-file name)
                (setf (fill-pointer lines) 0 (buf-crlf b) nil)
-               (with-open-file (in name :external-format :latin-1)
-                 (loop for line = (read-line in nil)
-                       while line
-                       do (let ((n (length line)))
-                            (when (and (plusp n) (char= (char line (1- n)) #\Return))
-                              (setf line (subseq line 0 (1- n)) (buf-crlf b) t))
-                            (vector-push-extend line lines))))
-               (when (zerop (length lines))       ; an empty file is as good as new
-                 (vector-push-extend "" lines)
-                 (setf (buf-crlf b) (default-crlf name)))
-               (message "Read ~D line~:P from ~A" (length lines) name))
+               ;; The buffer is the file's text cut at its newlines: so a
+               ;; file that ends with one -- most do -- has an empty last
+               ;; line, which is where point is after the final newline.
+               (let ((count 0) (ended t))
+                 (with-open-file (in name :external-format :latin-1)
+                   (loop (multiple-value-bind (line no-newline) (read-line in nil)
+                           (unless line (return))
+                           (let ((n (length line)))
+                             (when (and (plusp n) (char= (char line (1- n)) #\Return))
+                               (setf line (subseq line 0 (1- n)) (buf-crlf b) t))
+                             (vector-push-extend line lines))
+                           (incf count)
+                           (setf ended (not no-newline)))))
+                 (when ended (vector-push-extend "" lines))
+                 (when (zerop count)                ; an empty file is as good as new
+                   (setf (buf-crlf b) (default-crlf name)))
+                 (message "Read ~D line~:P from ~A" count name)))
               (t (setf (buf-crlf b) (default-crlf name))
                  (message "(New file)")))
         b)))
@@ -46,13 +52,18 @@ that runs over several lines would become part of the string."
   (visit (read-string "Find file: " :complete #'complete-file)))
 (defun write-buffer (b name)
   (with-open-file (out name :direction :output :if-exists :supersede :external-format :latin-1)
-    (unless (and (= (nlines b) 1) (string= (line-text 0 b) ""))    ; nothing: an empty file
-      (loop for line across (buf-lines b)
-            do (write-string line out)
-               (when (buf-crlf b) (write-char #\Return out))
-               (write-char #\Newline out))))
-  (setf (buf-modified b) nil)
-  (message "Wrote ~D line~:P to ~A (~A line endings)" (nlines b) name (if (buf-crlf b) "CRLF" "LF")))
+    ;; Every line but an empty last one is written with a newline after it:
+    ;; so the file ends with one newline whether or not the buffer does (and
+    ;; an empty buffer is an empty file).
+    (let ((last (1- (nlines b))) (count 0))
+      (loop for line across (buf-lines b) for i from 0
+            unless (and (= i last) (string= line ""))
+              do (write-string line out)
+                 (when (buf-crlf b) (write-char #\Return out))
+                 (write-char #\Newline out)
+                 (incf count))
+      (setf (buf-modified b) nil)
+      (message "Wrote ~D line~:P to ~A (~A line endings)" count name (if (buf-crlf b) "CRLF" "LF")))))
 (defun name-buffer (b file)
   (setf (buf-file b) file
         (buf-name b) (string-upcase (file-namestring file))

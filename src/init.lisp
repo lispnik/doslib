@@ -9,6 +9,9 @@
 ;;; through SB-EXT:*INIT-HOOKS* -- whenever a core saved with the library in
 ;;; it starts up (an application made with SAVE-LISP-AND-DIE, say).
 (defun doslib-init ()
+  "Set the library up in this process.  It runs when the library is loaded
+and whenever a core saved with the library in it starts; a program saved
+with its own :TOPLEVEL function calls it first."
   (incf *session*)
   (clrhash *stubs*)
   (setf *regs* (alien-sap (make-alien (unsigned 32) 8)))
@@ -16,13 +19,18 @@
   (setf *outb* (machine-code #x8B #x54 #x24 4 #x8B #x44 #x24 8 #xEE #xC3))
   (setf *inl* (machine-code #x8B #x54 #x24 4 #xED #xC3))
   (setf *outl* (machine-code #x8B #x54 #x24 4 #x8B #x44 #x24 8 #xEF #xC3))
+  (setf *inw* (machine-code #x8B #x54 #x24 4 #x31 #xC0 #x66 #xED #xC3))
+  (setf *outw* (machine-code #x8B #x54 #x24 4 #x8B #x44 #x24 8 #x66 #xEF #xC3))
   (setf *rm* (alien-sap (make-alien (unsigned 8) 64)))
   (setf *cpuid* (machine-code #x53 #x57 #x8B #x44 #x24 12 #x8B #x7C #x24 16
           #x0F #xA2 #x89 #x07 #x89 #x5F 4 #x89 #x4F 8
           #x89 #x57 12 #x5F #x5B #xC3))
   (setf *get-cs* (machine-code #x8C #xC8 #xC3)
         *get-ds* (machine-code #x8C #xD8 #xC3))
-  (setf *critical-stub* nil)
+  (setf *critical-stub* nil *critical-depth* 0)
+  (clrhash *dos-blocks*)                ; DOS memory: none of it is ours any more
+  (setf *scratch* nil)
+  (clrhash *drive-methods*)
   (setf *hotkey-segment* nil)
   (setf *hotkey-old-vector* nil)        ; a new process: nothing is hooked
   (clrhash *hotkey-functions*)
@@ -30,4 +38,5 @@
 (doslib-init)
 (pushnew 'doslib-init sb-ext:*init-hooks*)
 (pushnew 'remove-hotkeys sb-ext:*exit-hooks*)   ; leave the keyboard as we found it
-(pushnew 'release-critical-errors sb-ext:*exit-hooks*)
+(defun release-all-critical-errors () (release-critical-errors t))
+(pushnew 'release-all-critical-errors sb-ext:*exit-hooks*)

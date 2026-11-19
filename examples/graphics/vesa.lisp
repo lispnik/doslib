@@ -15,7 +15,7 @@
   (let* ((offset (+ x (* 640 y))) (bank (ash offset -16)))
     (declare (fixnum offset bank))
     (unless (= bank (the fixnum *bank*))
-      (int86 #x10 :ax #x4F05 :bx 0 :dx bank)        ; move the window
+      (vesa-set-bank bank)                          ; move the window
       (setf *bank* bank))
     (setf (sap-ref-8 *vga* (logand offset #xFFFF)) colour)))
 (defun julia-time (zr zi cr ci limit)
@@ -28,7 +28,7 @@
                   zr (+ (- r2 i2) cr))
             (incf i)))))
 (defun julia (&key (cr -0.8d0) (ci 0.156d0) (limit 200))
-  (unless (= (word16 (int86 #x10 :ax #x4F02 :bx #x101)) #x004F)
+  (unless (vesa-set-mode #x101)
     (error "No VESA mode 101h (640x480x256) here"))
   (setf *bank* -1)
   (rainbow-palette)

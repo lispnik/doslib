@@ -58,6 +58,15 @@
 
 (import '(u r) '#:cl-user)
 
+;;; An example that never ends, for the tests of interrupting one.
+(defun spin ()
+  (format t "~&spinning~%")
+  (finish-output)
+  (loop))
+(doslib-examples:define-example "spin" 'spin
+  :category :other
+  :description "A loop that never ends (tests).")
+
 ;;; ---- machine.lisp, dos.lisp, memory.lisp, cpuid.lisp, ports.lisp
 (deftest bytes
   (is= #x34 (lo #x1234))
@@ -274,3 +283,152 @@
   (is (member "fire" (doslib-examples:example-names) :test #'string=))
   (is (> (length (doslib-examples:example-names)) 50))
   (is (handler-case (progn (doslib-examples:run "no-such-example") nil) (error () t))))
+
+;;; ---- DOS memory given back, and the scratch block
+(deftest dos-free
+  (let ((first (dos-alloc 256)))
+    (dos-free first)
+    (is= first (dos-alloc 256))                         ; the same place is free again
+    (dos-free first)
+    (is (handler-case (progn (dos-free first) nil) (error () t))))   ; not twice
+  (let ((seen nil))
+    (with-dos-memory (segment 100)
+      (setf seen segment)
+      (is (< 0 segment #xA000)))
+    (is (handler-case (progn (dos-free seen) nil) (error () t)))))
+
+(deftest dos-scratch
+  (is= (dos-scratch) (dos-scratch))
+  (multiple-value-bind (segment offset) (dos-string "D:\\SBCL")
+    (is= (dos-scratch) segment)
+    (is= 0 offset)
+    (is= '(68 58 92 83 66 67 76 0) (coerce (dos-bytes segment 0 8) 'list))
+    ;; DOS reads it, in real mode: change directory to where we are already
+    (is (not (logbitp 0 (nth-value 6 (real-int #x21 :ax #x3B00 :ds segment :dx offset)))))))
+
+(deftest more-ports
+  (let ((word (inw #x40)))                              ; the timer's counter, 16 bits at once
+    (is (<= 0 word #xFFFF)))
+  (is= 59 (bcd #x59))
+  (is (<= 0 (bcd (cmos 0)) 59))                         ; the clock's seconds
+  (is (<= 1 (bcd (cmos 7)) 31))                         ; and the day of the month
+  (let ((before (ticks)))
+    (wait-tick 2)
+    (is (<= 2 (- (ticks) before) 3))))
+
+(deftest video-modes
+  (is= 3 (current-video-mode))
+  (is= :done (with-video-mode (#x13)
+               (is= #x13 (current-video-mode))
+               (wait-retrace)
+               :done))
+  (is= 3 (current-video-mode))
+  ;; left by a non-local exit as well
+  (catch 'out (with-video-mode (#x13) (throw 'out nil)))
+  (is= 3 (current-video-mode))
+  (unwind-protect
+       (progn (is (vesa-set-mode #x101))                ; 640x480, 256 colours
+              (vesa-set-bank 2)
+              (setf (sb-sys:sap-ref-8 *vga* 5) 77)
+              (vesa-set-bank 0)
+              (setf (sb-sys:sap-ref-8 *vga* 5) 11)
+              (vesa-set-bank 2)
+              (is= 77 (sb-sys:sap-ref-8 *vga* 5)))      ; another part of the picture
+    (video-mode 3)))
+
+(deftest speaker
+  (unwind-protect
+       (progn (speaker-on 440)
+              (is= 3 (logand (inb #x61) 3))
+              (is= (round +timer-hz+ 440) (speaker-divisor (round +timer-hz+ 440))))
+    (speaker-off))
+  (is= 0 (logand (inb #x61) 3))
+  (speaker-beep 660 1)
+  (is= 0 (logand (inb #x61) 3)))
+
+(deftest mouse
+  (is (mouse-driver-p))
+  (is (member (mouse-init) '(2 3)))
+  (mouse-range 0 0 639 199)
+  (mouse-move 320 96)
+  (multiple-value-bind (x y buttons) (mouse-position)
+    (is= 320 x) (is= 96 y) (is= 0 buttons))
+  (multiple-value-bind (column row) (mouse-cell)
+    (is= 40 column) (is= 12 row))
+  (is= 320 (mouse-pixel))                               ; text mode: no halving
+  (with-video-mode (#x13)
+    (mouse-init)
+    (mouse-move 100 50)
+    (is= 50 (mouse-pixel)))                             ; 320 across: half the driver's 100
+  (mouse-init)
+  (is= 0 (mouse-presses 0))
+  (is= 0 (mouse-releases 0))
+  (multiple-value-bind (dx dy) (mouse-motion)
+    (is (integerp dx)) (is (integerp dy)))
+  (mouse-show)
+  (with-mouse-hidden (text-put 0 0 " "))
+  (mouse-hide))
+
+(deftest disks
+  (is= 3 (drive-number "d:"))
+  (is= 2 (drive-number #\c))
+  (is= 3 (current-drive))
+  (is= #\D (drive-letter nil))
+  (let ((boot (dos-read-sectors "C" 0)))                ; a volume's boot sector
+    (is= 512 (length boot))
+    (is= #x55 (aref boot 510)) (is= #xAA (aref boot 511))
+    (is (member (aref boot 0) '(#xEB #xE9))))           ; it starts with a jump
+  (is (member (drive-read-method "C") '(:small :large :fat32)))
+  (is= 2048 (length (dos-read-sectors nil 1 :count 4)))
+  ;; more than the scratch block holds at once
+  (let ((many (dos-read-sectors nil 0 :count 40)))
+    (is= (* 40 512) (length many))
+    (is (equalp (subseq many 0 512) (dos-read-sectors nil 0))))
+  (let ((mbr (bios-read-sectors #x80 0)))               ; the first hard disk's partition table
+    (is= #x55 (aref mbr 510)) (is= #xAA (aref mbr 511)))
+  (is (typep (handler-case (dos-read-sectors "Q" 0) (disk-error (e) e)) 'disk-error))
+  (is (typep (handler-case (bios-read-sectors #x9F 0) (disk-error (e) e)) 'disk-error)))
+
+(deftest pci
+  (is (pci-present-p))
+  (let ((devices (pci-devices :buses 2)))
+    (is (plusp (length devices)))
+    (destructuring-bind (bus device function vendor id class) (first devices)
+      (is= '(0 0 0) (list bus device function))
+      (is= vendor (pci-word 0 0 0 0))
+      (is= id (pci-word 0 0 0 2))
+      (is= class (ash (pci-read 0 0 0 8) -8))
+      (is= (ldb (byte 8 16) class) (pci-byte 0 0 0 #x0B)))
+    (is (find #x0300 devices :key (lambda (d) (ash (sixth d) -8))))))   ; a VGA card
+
+(deftest serial-ports
+  (is= #x3F8 (serial-port 1))
+  (is= #x3F8 (serial-open :port #x3F8 :baud 9600))
+  (is= #x03 (logand (inb (+ #x3F8 3)) #x7F))            ; 8 data bits, no parity, 1 stop
+  (is= nil (serial-read-byte #x3F8 nil))                ; nothing has arrived
+  (is (not (serial-byte-ready-p #x3F8))))
+
+(deftest critical-errors-nest
+  (catch-critical-errors)
+  (catch-critical-errors)
+  (release-critical-errors)                             ; the inner one: still caught
+  (ignore-errors (with-open-file (in "A:\\NOSUCH.TXT") (read-line in)))
+  (is (stringp (critical-error)))
+  (release-critical-errors)
+  (is= nil (critical-error))
+  (is= :value (with-critical-errors-caught
+                (ignore-errors (with-open-file (in "A:\\NOSUCH.TXT") (read-line in)))
+                (is (stringp (critical-error)))
+                :value)))
+
+(deftest interrupts
+  (is (interrupts-supported-p))
+  (is (interrupt-chord))
+  (setf (interrupt-chord) nil)
+  (is (not (interrupt-chord)))
+  (setf (interrupt-chord) t)
+  (is (interrupt-chord))
+  (is= '(1 2) (multiple-value-list (catching-interrupt (values 1 2))))
+  (is= :interrupted (catching-interrupt (signal 'sb-sys:interactive-interrupt)))
+  (is (subtypep 'interrupt 'condition))
+  (is (integerp (interrupt-count))))

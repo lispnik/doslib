@@ -1,0 +1,1135 @@
+# doslib reference
+
+Every exported name, file by file, with its arguments and what its
+documentation string says.  This file is made by `doc/make-reference.lisp`
+from the sources: change the documentation string, not this file.
+
+## The library
+
+Package `doslib`.
+
+### `src/machine.lisp`: Machine code made at run time: software interrupts and byte helpers.
+
+**`machine-code`** `&rest bytes` — Function  
+Put BYTES in memory as machine code.  Returns its address (a system area pointer), to be called with ALIEN-FUNCALL.  The memory is the process's, not the Lisp image's: see SAVED-CODE.
+
+**`interrupt-stub`** `n` — Function  
+Machine code for the function INT86 calls to do interrupt N: it loads EAX, EBX, ECX, EDX and EDI from a block of words, does INT N, and stores them back with the flags.
+
+**`*regs*`** — Variable  
+The block of words INT86 passes the registers in.
+
+**`*stubs*`** — Variable  
+Interrupt number -> its INTERRUPT-STUB, made when first wanted.
+
+**`int86`** `n &key (ax 0) (bx 0) (cx 0) (dx 0) (di 0)` — Function  
+Software interrupt N.  Returns AX BX CX DX DI FLAGS as 32-bit values.
+
+**`lo`** `x` — Function  
+The low byte of X: AL of AX.
+
+**`hi`** `x` — Function  
+The second byte of X: AH of AX.
+
+**`word16`** `x` — Function  
+The low 16 bits of X: AX of EAX.
+
+**`*session*`** — Variable  
+Which process of this image we are in: DOSLIB-INIT counts them.
+
+**`saved-code`** — Structure  
+Machine code kept as its bytes, so that it survives in a saved core: (saved-code bytes) makes one, and CODE-ADDRESS puts it in memory.
+
+**`code-address`** `saved-code` — Function  
+Where SAVED-CODE is in memory, in this process.
+
+### `src/ports.lisp`: I/O ports, 8, 16 and 32 bits wide, and the CMOS memory.
+
+**`*inb*`** — Variable  
+Machine code: read a byte from a port.
+
+**`*outb*`** — Variable  
+Machine code: write a byte to a port.
+
+**`inb`** `port` — Function  
+Read a byte from I/O port PORT.
+
+**`outb`** `port value` — Function  
+Write the byte VALUE to I/O port PORT.
+
+**`inw`** `port` — Function  
+Read 16 bits from I/O port PORT.
+
+**`outw`** `port value` — Function  
+Write the 16 bits of VALUE to I/O port PORT.
+
+**`*inl*`** — Variable  
+Machine code: read 32 bits from a port.
+
+**`*outl*`** — Variable  
+Machine code: write 32 bits to a port.
+
+**`inl`** `port` — Function  
+Read 32 bits from I/O port PORT.
+
+**`outl`** `port value` — Function  
+Write the 32 bits of VALUE to I/O port PORT.
+
+**`cmos`** `register` — Function  
+Byte REGISTER (0 to 127) of the CMOS memory: the clock, and the BIOS's settings.
+
+**`bcd`** `byte` — Function  
+The number that BYTE holds as two decimal digits, as the clock keeps its.
+
+### `src/dos.lisp`: Real-mode interrupts through DPMI, memory below 1MB, Ctrl-C and Ctrl-Break.
+
+**`*rm*`** — Variable  
+The DPMI real-mode call structure REAL-INT passes the registers in.
+
+**`real-int`** `n &key (ax 0) (bx 0) (cx 0) (dx 0) (si 0) (di 0) (es 0) (ds 0)` — Function  
+Real-mode interrupt N.  Returns AX BX CX DX ES DS FLAGS (16-bit values).
+
+**`dos-alloc`** `bytes` — Function  
+Memory below 1MB, which real-mode code (BIOS, DOS) can reach.  Returns its segment.  It belongs to this process: a saved core does not keep it.
+
+**`dos-free`** `segment` — Function  
+Give back memory that DOS-ALLOC returned.
+
+**`with-dos-memory`** `(segment bytes) &body body` — Macro  
+Run BODY with SEGMENT bound to BYTES of DOS memory, freed afterwards.
+
+**`linear`** `segment &optional (offset 0)` — Function  
+The address, for PEEK and SAP-REF, of real-mode SEGMENT:OFFSET.
+
+**`dos-scratch`** `` — Function  
+The segment of 16K of DOS memory for short-lived use: what is in it lasts until the next thing that uses it (DOS-STRING, the functions in disk.lisp).
+
+**`dos-string`** `string &key (segment (dos-scratch)) (offset 0)` — Function  
+Copy STRING into DOS memory with a zero after it, as DOS wants its file names.  Returns the segment and the offset: DS:DX for REAL-INT, say.
+
+**`dos-bytes`** `segment offset count` — Function  
+COUNT bytes of memory at SEGMENT:OFFSET, as a vector.
+
+**`break-checking`** `` — Function  
+Is DOS's BREAK on?  SETF it to true or false to turn it on or off.
+
+**`(setf break-checking)`** `on` — Function  
+Turn DOS's BREAK on or off.
+
+**`without-break-checking`** `&body body` — Macro  
+Run BODY with DOS's BREAK off, and put it back as it was afterwards.
+
+**`interrupt`** — Type  
+The condition signalled when the user interrupts the program.
+
+**`interrupts-supported-p`** `` — Function  
+Can this SBCL be interrupted with Ctrl-Break?  (One built before that was added cannot.)
+
+**`interrupt-chord`** `` — Function  
+Does pressing Ctrl, Alt and Shift together interrupt the program?  SETF it to NIL for a program that wants those keys itself.
+
+**`(setf interrupt-chord)`** `on` — Function  
+Say whether Ctrl-Alt-Shift interrupts the program.
+
+**`interrupt-count`** `` — Function  
+How many times the program has been interrupted from the keyboard.
+
+**`catching-interrupt`** `&body body` — Macro  
+Run BODY and return its values -- or, if the user interrupts it, stop it there (its UNWIND-PROTECT forms run) and return :INTERRUPTED.
+
+### `src/cpuid.lisp`: The CPUID instruction.
+
+**`*cpuid*`** — Variable  
+Machine code: the CPUID instruction.
+
+**`cpuid`** `leaf` — Function  
+The processor's answer to CPUID with EAX = LEAF: EAX, EBX, ECX and EDX.
+
+### `src/memory.lisp`: Reading memory by address.
+
+**`peek`** `address` — Function  
+The byte at ADDRESS.
+
+**`peek16`** `address` — Function  
+The 16 bits at ADDRESS.
+
+**`peek32`** `address` — Function  
+The 32 bits at ADDRESS.
+
+### `src/interrupts.lisp`: Protected-mode interrupt vectors, through DPMI.
+
+**`code-selector`** `` — Function  
+The selector our code runs in: what an interrupt vector must name.
+
+**`data-selector`** `` — Function  
+The selector of our (flat) data segment, for handlers that must load DS.
+
+**`bytes32`** `x` — Function  
+X as four bytes, low first: for putting addresses into machine code.
+
+**`get-vector`** `n` — Function  
+The handler of protected-mode interrupt N: its selector and offset (DPMI 0204h).
+
+**`set-vector`** `n selector offset` — Function  
+Point protected-mode interrupt N at SELECTOR:OFFSET (DPMI 0205h).
+
+### `src/hotkey.lisp`: Hot keys: keys taken straight from the keyboard interrupt.
+
+**`hotkeys-installed-p`** `` — Function  
+Is any hot key installed?
+
+**`install-hotkey`** `scan-code function` — Function  
+Make the key with SCAN-CODE (F12 is #x58, F11 #x57, Scroll Lock #x46) call FUNCTION, with no arguments, the next time the program polls.
+
+**`remove-hotkeys`** `` — Function  
+Give every hot key back to the keyboard, and interrupt 15h to its old handler.
+
+**`remove-hotkey`** `scan-code` — Function  
+Give the key with SCAN-CODE back to the keyboard.
+
+**`hotkey-pending-p`** `scan-code` — Function  
+Has the hot key been pressed, and not yet been acted on?
+
+**`clear-pending-hotkeys`** `` — Function  
+Forget hot keys that have been pressed but not yet acted on.
+
+**`poll-hotkeys`** `` — Function  
+Call the function of any hot key pressed since the last poll.  Cheap when none was.
+
+### `src/video.lisp`: VGA: video modes, the palette, pixels and lines in mode 13h; VESA modes.
+
+**`*vga*`** — Variable  
+Video memory in the graphics modes: a byte a pixel in mode 13h.
+
+**`video-mode`** `mode` — Function  
+Set BIOS video mode MODE: 3 is 80x25 text, #x13 is 320x200 in 256 colours.
+
+**`current-video-mode`** `` — Function  
+The BIOS's video mode: 3 is 80x25 text, #x13 is 320x200 in 256 colours.
+
+**`with-video-mode`** `(mode) &body body` — Macro  
+Run BODY in video mode MODE, and go back to 80x25 text however it ends.
+
+**`wait-retrace`** `` — Function  
+Wait for the start of the next vertical retrace: the moment to change the palette or the picture without it showing.
+
+**`vesa-set-mode`** `mode` — Function  
+Set a VESA BIOS mode (#x101 is 640x480 in 256 colours).  True if the BIOS did.
+
+**`vesa-set-bank`** `bank &optional (window 0)` — Function  
+Move the 64K window at A0000h to BANK of a VESA mode's video memory.
+
+**`set-palette`** `index r g b` — Function  
+Make colour INDEX the mixture R, G, B: each from 0 to 63.
+
+**`rainbow-palette`** `&optional (first 1) (last 255)` — Function  
+Make colours FIRST to LAST a rainbow, and colour 0 black.
+
+**`plot`** `x y colour` — Function  
+Set the pixel at X, Y in mode 13h; off the screen, nothing happens.
+
+**`draw-line`** `x0 y0 x1 y1 colour` — Function  
+Draw a line in mode 13h (Bresenham's algorithm).
+
+### `src/input.lisp`: The BIOS timer tick and keyboard.
+
+**`ticks`** `` — Function  
+The BIOS's count of timer ticks: 18.2 a second, zero at midnight.
+
+**`wait-tick`** `&optional (n 1)` — Function  
+Wait for N ticks of the BIOS timer: 18.2 to the second.
+
+**`key-pressed-p`** `` — Function  
+Is a key waiting to be read?
+
+**`wait-key`** `` — Function  
+Wait for a key.  Returns the BIOS's word for it: the scan code in the high byte, the character in the low.  GET-KEY gives it a name.
+
+**`finish`** `` — Function  
+Wait for a key, then go back to 80x25 text: how a picture ends.
+
+### `src/text.lisp`: Text mode: characters and colours written straight into video memory,
+
+**`*text-screen*`** — Variable  
+80x25 cells: a character byte, then a colour byte.
+
+**`text-put`** `x y string &optional (attribute 7)` — Function  
+Write STRING at column X, row Y, in colour ATTRIBUTE (background * 16 + foreground).
+
+**`text-fill`** `x y width height &optional (attribute 7) (char #\ )` — Function  
+Fill a rectangle with CHAR in colour ATTRIBUTE.
+
+**`text-box`** `x y width height &key (attribute 7) title (title-attribute attribute) shadow` — Function  
+A filled box with a double-line border, an optional TITLE and SHADOW.
+
+**`text-cursor`** `x y` — Function  
+Put the hardware cursor at X, Y.
+
+**`hide-text-cursor`** `` — Function  
+Make the hardware cursor invisible.
+
+**`show-text-cursor`** `` — Function  
+Make the hardware cursor the usual underline.
+
+**`save-text-screen`** `` — Function  
+The whole text screen and the cursor, for RESTORE-TEXT-SCREEN.
+
+**`restore-text-screen`** `saved` — Function  
+Put back the screen and cursor that SAVE-TEXT-SCREEN returned.
+
+**`get-key`** `` — Function  
+Wait for a key.  Returns its character -- or, for a key that has none, a keyword such as :UP, :F1 or :DELETE (or the scan code, if it has no name).
+
+**`text-input`** `x y width &key (attribute 7) (initial "")` — Function  
+Let the user type a line at X, Y in a field WIDTH wide.  Enter returns the string; Esc returns NIL.
+
+### `src/critical.lisp`: DOS critical errors: "Abort, Retry, Fail?" answered by the program.
+
+**`catch-critical-errors`** `` — Function  
+From now on DOS device errors fail quietly, and (critical-error) tells of them.  Calls nest: the handler stays until RELEASE-CRITICAL-ERRORS has been called as often as this has.
+
+**`release-critical-errors`** `&optional all` — Function  
+Undo one CATCH-CRITICAL-ERRORS -- or, with ALL, every one.  When none is left, interrupt 24h goes back to its previous handler.
+
+**`with-critical-errors-caught`** `&body body` — Macro  
+Run BODY with DOS device errors failing quietly, as CATCH-CRITICAL-ERRORS.
+
+**`critical-error`** `` — Function  
+If a device has failed since this was last asked, the description of the failure (and its code); otherwise NIL.  Asking clears it.
+
+### `src/dialog.lisp`: A restart dialog: Common Lisp's answer to "Abort, Retry, Fail?".
+
+**`text-wrap`** `text width` — Function  
+TEXT as a list of lines no longer than WIDTH, broken at spaces.  A paragraph that starts with spaces keeps them, on every line it becomes; a word too long for any line is cut where the line ends.
+
+**`dialog-ask`** `prompt` — Function  
+Ask for a line of text inside the dialog that is showing (or at the bottom of the screen); for the :INTERACTIVE function of a restart. Returns the string typed, or "" if the user pressed Esc.
+
+**`restart-dialog`** `condition &key (restarts (compute-restarts condition)) through (title "Error") eval-package` — Function  
+Show CONDITION and RESTARTS; invoke the one the user chooses.  THROUGH names the last restart to offer: the program's outermost one, so that those of whatever is running the program are left out.  With EVAL-PACKAGE, the user may also type Lisp forms, evaluated in that package.
+
+### `src/sound.lisp`: The PC speaker.
+
+**`+timer-hz+`** — Constant  
+The frequency of the clock that drives the timer chip.
+
+**`speaker-divisor`** `divisor` — Function  
+Start a tone of 1193182/DIVISOR Hz (DIVISOR from 1 to 65535).
+
+**`speaker-on`** `frequency` — Function  
+Start a tone of FREQUENCY Hz (19 to 20000 or so).  It sounds until SPEAKER-OFF.
+
+**`speaker-off`** `` — Function  
+Silence the speaker.
+
+**`speaker-beep`** `&optional (frequency 880) (ticks 4)` — Function  
+Sound FREQUENCY Hz for TICKS timer ticks (18.2 to the second).
+
+### `src/mouse.lisp`: The mouse, through the mouse driver (interrupt 33h).
+
+**`mouse-driver-p`** `` — Function  
+Is there a handler on interrupt 33h?  (Calling it without one would crash.)
+
+**`mouse-init`** `` — Function  
+Reset the mouse driver.  Returns the number of buttons, or NIL if there is no driver or no mouse.  The pointer starts hidden, in the middle.
+
+**`mouse-show`** `` — Function  
+Show the driver's pointer.  (Calls to MOUSE-HIDE nest: each needs a MOUSE-SHOW.)
+
+**`mouse-hide`** `` — Function  
+Take the driver's pointer off the screen.
+
+**`with-mouse-hidden`** `&body body` — Macro  
+Run BODY with the pointer off the screen: for drawing where it might be.
+
+**`mouse-position`** `` — Function  
+Where the mouse is and what is pressed.  Returns X, Y (the driver's units) and the buttons: bit 0 is the left one, bit 1 the right, bit 2 the middle.
+
+**`mouse-cell`** `` — Function  
+The character cell the mouse is in: column, row, and the buttons.
+
+**`mouse-pixel`** `` — Function  
+The pixel the mouse is at in a graphics mode: x, y, and the buttons.
+
+**`mouse-move`** `x y` — Function  
+Put the mouse at X, Y (the driver's units).
+
+**`mouse-range`** `x0 y0 x1 y1` — Function  
+Keep the mouse inside the rectangle from X0, Y0 to X1, Y1.
+
+**`mouse-presses`** `&optional (button 0)` — Function  
+How often BUTTON (0 left, 1 right, 2 middle) has been pressed since this was last asked, and where the last press was: count, x, y.
+
+**`mouse-releases`** `&optional (button 0)` — Function  
+As MOUSE-PRESSES, for the button being let go.
+
+**`mouse-motion`** `` — Function  
+How far the mouse has moved since this was last asked, in mickeys (the mouse's own units, whatever the screen): dx and dy, negative for left and up.
+
+### `src/disk.lisp`: Reading disks a sector at a time: through DOS, and through the BIOS.
+
+**`disk-error`** — Condition  
+A sector could not be read: DOS-READ-SECTORS and BIOS-READ-SECTORS signal it.
+
+**`disk-error-drive`** `condition` — Function  
+The drive of a disk-error condition.
+
+**`disk-error-sector`** `condition` — Function  
+The sector of a disk-error condition.
+
+**`disk-error-code`** `condition` — Function  
+The code of a disk-error condition.
+
+**`disk-error-reason`** `condition` — Function  
+The reason of a disk-error condition.
+
+**`current-drive`** `` — Function  
+The number of DOS's current drive: 0 is A:, 2 is C:.
+
+**`drive-number`** `drive` — Function  
+DRIVE as a number (0 is A:), given a number, a letter, a string such as "c:", or NIL for the current drive.
+
+**`drive-letter`** `drive` — Function  
+The letter of DRIVE (as DRIVE-NUMBER takes it): a character.
+
+**`drive-read-method`** `drive` — Function  
+Which of DOS's three ways reads DRIVE: :SMALL, :LARGE or :FAT32.  Signals DISK-ERROR if there is no such drive, or none of them works.
+
+**`dos-read-sectors`** `drive sector &key (count 1) (bytes-per-sector 512)` — Function  
+COUNT sectors of a DOS drive (a number, 0 for A:, or a letter, or NIL for the current one), starting at SECTOR of its volume, as a vector of bytes.
+
+**`bios-read-sectors`** `drive sector &optional (count 1)` — Function  
+COUNT 512-byte sectors of a whole disk, through the BIOS (interrupt 13h, function 42h): DRIVE is the BIOS's number, #x80 for the first hard disk, and SECTOR counts from the very start of the disk.
+
+### `src/pci.lisp`: PCI configuration space, by the ports CF8h and CFCh.
+
+**`pci-read`** `bus device function register` — Function  
+The 32 bits at REGISTER (a multiple of 4) of a device's configuration space.
+
+**`pci-write`** `bus device function register value` — Function  
+Write the 32 bits of VALUE at REGISTER of a device's configuration space.
+
+**`pci-byte`** `bus device function register` — Function  
+The byte at REGISTER of a device's configuration space.
+
+**`pci-word`** `bus device function register` — Function  
+The 16 bits at REGISTER (even) of a device's configuration space.
+
+**`pci-present-p`** `` — Function  
+Does the machine have PCI, as far as the configuration ports can tell?
+
+**`pci-devices`** `&key (buses 256)` — Function  
+Every PCI function there is, as lists: bus, device, function, vendor id, device id, and the 24-bit class code (class, subclass, interface).
+
+### `src/serial.lisp`: Serial ports, by polling the UART: no interrupts.
+
+**`serial-port`** `n` — Function  
+The base address of COMn (1 to 4) as the BIOS found it, or NIL if there is none.
+
+**`serial-open`** `&key (port 1016) (baud 115200)` — Function  
+Set PORT up for BAUD, 8 data bits, no parity, 1 stop bit.  Returns PORT.
+
+**`serial-byte-ready-p`** `port` — Function  
+Has a byte arrived?
+
+**`serial-read-byte`** `port &optional (wait t)` — Function  
+The next byte received; with WAIT false, NIL if none has arrived.
+
+**`serial-write-byte`** `port byte` — Function  
+Send BYTE, waiting until the port can take it.
+
+**`serial-write-string`** `port string` — Function  
+Send STRING, with a carriage return before every newline.
+
+**`serial-read-line`** `port` — Function  
+Bytes received up to a carriage return or a line feed, as a string.
+
+### `src/init.lisp`: Setting the library up, at load time and when a saved core starts.
+
+**`doslib-init`** `` — Function  
+Set the library up in this process.  It runs when the library is loaded and whenever a core saved with the library in it starts; a program saved with its own :TOPLEVEL function calls it first.
+
+## The examples
+
+Package `doslib-examples`.
+
+### `examples/package.lisp`: The examples: a registry, so that they can be listed and run by name.
+
+**`define-example`** `name function &key (category :other) (description "")` — Function  
+Make the example NAME known: FUNCTION (a symbol) runs it.
+
+**`run`** `name &rest arguments` — Function  
+Run the example NAME (a string or symbol), passing ARGUMENTS to its MAIN. Ctrl-Break (or Ctrl-Alt-Shift) stops it: the screen goes back to text, the speaker is silenced, and RUN returns.
+
+**`run-arguments`** `&optional (arguments (command-line-arguments))` — Function  
+Run the example named by the first of ARGUMENTS, passing it the rest: by default, what follows --end-toplevel-options on the command line, which is how DEMO.BAT passes on what was typed after DEMO.  An argument that is a whole number is passed as a number, anything else as a string.
+
+**`list-examples`** `&optional (stream *standard-output*)` — Function  
+Print the examples, by category.
+
+**`example-names`** `` — Function  
+The names of all the examples, in alphabetical order.
+
+**`list-names`** `&optional (stream *standard-output*)` — Function  
+Print just the names of the examples, by category: it fits on one screen.
+
+**`menu`** `` — Function  
+Run the examples asked for by name, until an empty line or q. ? lists their names again, and ?? lists them with descriptions.
+
+**`data-file`** `name` — Function  
+The native name of a file in the examples' data directory.
+
+**`build-executable`** `name file` — Function  
+Save the example NAME as a stand-alone program in FILE.  This ends the Lisp session.
+
+**`save-core`** `&optional (file "doslib.cor")` — Function  
+Save a core with the examples already loaded, so that they start quickly: sbcl --core doslib.cor.  This ends the Lisp session.
+
+## The editor
+
+Package `doslib-emacs`.
+
+### `emacs/buffers.lisp`: Buffers: a vector of lines, a point, a mark
+
+**`buf`** — Structure  
+
+**`win`** — Structure  
+
+**`mode-hook`** `mode name` — Function  
+
+**`buffer-precious-p`** `b` — Function  
+Would killing B lose work?
+
+**`*buffers*`** — Variable  
+
+**`*buf*`** — Variable  
+The current buffer.
+
+**`*windows*`** — Variable  
+
+**`*window*`** — Variable  
+The selected window.
+
+**`*commands*`** — Variable  
+Every function defined with DEFINE-COMMAND.
+
+**`*message*`** — Variable  
+
+**`*last-message*`** — Variable  
+The most recent echo-area message, for programs to look at.
+
+**`*kill-ring*`** — Variable  
+
+**`*this-command*`** — Variable  
+
+**`*last-command*`** — Variable  
+
+**`*unread*`** — Variable  
+
+**`*prefix-argument*`** — Variable  
+The number typed with C-u or M-digits before this command, or NIL.
+
+**`*defining-macro*`** — Variable  
+
+**`*macro-keys*`** — Variable  
+The keys of the keyboard macro being defined, newest first.
+
+**`*macro-mark*`** — Variable  
+
+**`*last-macro*`** — Variable  
+The keys of the last keyboard macro defined.
+
+**`*repl-package*`** — Variable  
+The package the REPL and the evaluation commands read and evaluate in.
+
+**`quit-command`** — Condition  
+
+**`*inhibit-read-only*`** — Variable  
+True while a read-only buffer may be changed.
+
+**`define-command`** `name lambda-list &body body` — Macro  
+Define a function that can be bound to a key or run with M-x.
+
+**`message`** `control &rest arguments` — Function  
+Show a line in the echo area.
+
+**`one-line`** `string` — Function  
+
+**`editor-error`** `control &rest arguments` — Function  
+
+**`make-buf`** `name` — Function  
+
+**`find-buf`** `name` — Function  
+
+**`nlines`** `&optional (b *buf*)` — Function  
+
+**`line-text`** `i &optional (b *buf*)` — Function  
+
+**`current-line`** `` — Function  
+The text of the line point is on.
+
+**`point-line`** `` — Function  
+
+**`point-col`** `` — Function  
+
+**`goto`** `line col` — Function  
+Move point, staying inside the buffer.
+
+**`split-lines`** `string` — Function  
+
+**`vector-insert`** `vector index item` — Function  
+
+**`vector-delete`** `vector start end` — Function  
+
+**`insert-at`** `line col string &key (b *buf*) (undo t)` — Function  
+Insert STRING at LINE, COL; returns the position after it.
+
+**`text-between`** `l1 c1 l2 c2 &optional (b *buf*)` — Function  
+
+**`delete-between`** `l1 c1 l2 c2 &key (b *buf*) (undo t)` — Function  
+Delete the text between two positions and return it.
+
+**`insert`** `string` — Function  
+Insert STRING at point.
+
+**`buffer-string`** `&optional (b *buf*)` — Function  
+
+### `emacs/screen.lisp`: The screen
+
+**`*screen*`** — Variable  
+
+**`*flush-screen*`** — Variable  
+
+**`*place-cursor*`** — Variable  
+
+**`*leave-display*`** — Variable  
+
+**`reset-display`** `` — Function  
+
+**`*attrs*`** — Variable  
+
+**`put-string`** `x y string attribute &optional (width (length string))` — Function  
+
+**`set-cursor`** `x y` — Function  
+
+**`whitespace-p`** `c` — Function  
+
+**`delimiter-p`** `c` — Function  
+
+**`*highlight-words*`** — Variable  
+
+**`lisp-attributes`** `text` — Function  
+Fill *ATTRS* with a colour for each character of a line of Lisp.
+
+**`region-bounds`** `&optional (b *buf*)` — Function  
+The mark and point in order: L1 C1 L2 C2.
+
+**`mode-name`** `mode` — Function  
+
+**`visual-col`** `text col` — Function  
+The screen column that character COL of TEXT lands in (tabs go to every 8th).
+
+**`draw-window`** `w` — Function  
+
+**`draw-echo`** `&optional (text () prompt)` — Function  
+
+**`redisplay`** `` — Function  
+
+### `emacs/keyboard.lisp`: The keyboard: BIOS codes -> key names like "a", "C-x", "M-f", "<up>"
+
+**`extended-key`** `scan shifted` — Function  
+
+**`*idle-hooks*`** — Variable  
+Functions to call while waiting for a key at the top level.
+
+**`add-idle-hook`** `function` — Function  
+
+**`remove-idle-hook`** `function` — Function  
+
+**`read-raw-key`** `` — Function  
+
+**`read-key`** `` — Function  
+The next key, by name.  ESC followed by a key is Meta.
+
+### `emacs/keymaps.lisp`: Keymaps
+
+**`*global-map*`** — Variable  
+
+**`mode-map`** `mode` — Function  
+
+**`split-keys`** `string` — Function  
+
+**`bind-key`** `keys command &optional (map *global-map*)` — Function  
+Make the key sequence KEYS ("C-x C-f", "M-q", "<f5>") run COMMAND. MAP may be a keymap or the name of a mode, as in (bind-key "C-c t" 'foo 'lisp-mode).
+
+**`read-command`** `` — Function  
+Read keys until they name a command.  Returns it (or NIL) and the keys typed.
+
+### `emacs/minibuffer.lisp`: The minibuffer
+
+**`read-string`** `prompt &key (initial "") complete` — Function  
+Read a line in the echo area.  COMPLETE, if given, is called on TAB with the text so far and returns the completed text and a list of candidates.
+
+**`complete-from`** `candidates` — Function  
+A completion function over a list of strings.
+
+**`complete-file`** `text` — Function  
+
+**`ask-y-or-n`** `question` — Function  
+
+### `emacs/movement.lisp`: Movement
+
+**`forward-char`** `` — Command  
+Move point right one character.
+
+**`backward-char`** `` — Command  
+Move point left one character.
+
+**`move-lines`** `n` — Function  
+
+**`next-line`** `` — Command  
+Move point down one line.
+
+**`previous-line`** `` — Command  
+Move point up one line.
+
+**`beginning-of-line`** `` — Command  
+Move point to the start of the line.
+
+**`end-of-line`** `` — Command  
+Move point to the end of the line.
+
+**`beginning-of-buffer`** `` — Command  
+Move point to the start of the buffer.
+
+**`end-of-buffer`** `` — Command  
+Move point to the end of the buffer.
+
+**`scroll-up`** `` — Command  
+Move forward one screenful.
+
+**`scroll-down`** `` — Command  
+Move back one screenful.
+
+**`recenter`** `` — Command  
+Put the line with point in the middle of the window.
+
+**`char-at`** `line col` — Function  
+
+**`at-end-p`** `` — Function  
+
+**`at-start-p`** `` — Function  
+
+**`forward-word`** `` — Command  
+Move point to the end of the next word.
+
+**`backward-word`** `` — Command  
+Move point to the start of the previous word.
+
+**`goto-line`** `` — Command  
+Go to a line: the one given as a prefix argument (C-u 42 M-g), or asked for.
+
+### `emacs/editing.lisp`: Editing
+
+**`self-insert`** `key` — Function  
+
+**`newline`** `` — Command  
+Insert a line break.
+
+**`tab-to-tab-stop`** `` — Command  
+Insert spaces up to the next multiple of 8 columns.
+
+**`quoted-insert`** `` — Command  
+Insert the next key literally: C-q TAB inserts a tab character.
+
+**`open-line`** `` — Command  
+Insert a line break after point.
+
+**`delete-char`** `` — Command  
+Delete the character after point.
+
+**`delete-backward-char`** `` — Command  
+Delete the character before point.
+
+**`kill-new`** `text &optional before` — Function  
+
+**`kill-between`** `l1 c1 l2 c2 &optional before` — Function  
+
+**`kill-line`** `` — Command  
+Kill to the end of the line; at the end of a line, kill the line break.
+
+**`kill-word`** `` — Command  
+Kill to the end of the next word.
+
+**`backward-kill-word`** `` — Command  
+Kill to the start of the previous word.
+
+**`set-mark`** `` — Command  
+Put the mark where point is.
+
+**`exchange-point-and-mark`** `` — Command  
+Swap point and the mark.
+
+**`mark-whole-buffer`** `` — Command  
+Put point at the start and the mark at the end.
+
+**`kill-region`** `` — Command  
+Kill the text between point and the mark.
+
+**`copy-region`** `` — Command  
+Save the text between point and the mark without killing it.
+
+**`yank`** `` — Command  
+Insert the most recently killed text.
+
+**`revert-changes`** `from` — Function  
+Undo the newest group of changes on the list FROM (a place holding an undo or redo list); returns the records of what that did, for the other list.
+
+**`*changes*`** — Variable  
+
+**`undo`** `` — Command  
+Undo the last change; repeat to undo more.
+
+**`redo`** `` — Command  
+Redo the change that the last undo took back.
+
+**`keyboard-quit`** `` — Command  
+Cancel.
+
+### `emacs/search.lisp`: Search
+
+**`find-text`** `text line col direction` — Function  
+The next occurrence of TEXT starting at or after LINE, COL -- or, going backward, the last one starting at or before it: line and column, or NIL.
+
+**`isearch`** `direction` — Function  
+
+**`isearch-forward`** `` — Command  
+Search forward as you type.
+
+**`isearch-backward`** `` — Command  
+Search backward as you type.
+
+**`replace-string`** `` — Command  
+Replace every later occurrence of one string with another.
+
+### `emacs/files.lisp`: Files and buffers
+
+**`select-buffer`** `b` — Function  
+
+**`mode-for-file`** `name` — Function  
+
+**`default-crlf`** `name` — Function  
+Should a new file called NAME have DOS line endings?  Not Lisp source: ASDF reads source files as they are, and a carriage return inside a string that runs over several lines would become part of the string.
+
+**`find-file-buffer`** `name` — Function  
+
+**`visit`** `name` — Function  
+Show the file NAME in this window -- or, if it is a directory, its listing.
+
+**`find-file`** `` — Command  
+Visit a file in its own buffer; a directory is opened in Dired.
+
+**`write-buffer`** `b name` — Function  
+
+**`name-buffer`** `b file` — Function  
+
+**`save-buffer`** `` — Command  
+Save the buffer in its file.
+
+**`write-file`** `` — Command  
+Save the buffer in a file you name.  It keeps the line endings it has.
+
+**`toggle-line-endings`** `` — Command  
+Switch the buffer between DOS (CRLF) and Unix (LF) line endings; saving writes them.
+
+**`load-file`** `` — Command  
+Load a file of Lisp code.
+
+**`switch-to-buffer`** `` — Command  
+Show another buffer in this window.
+
+**`kill-buffer`** `` — Command  
+Get rid of the current buffer.
+
+**`show-in-help`** `name text` — Function  
+Put TEXT in the buffer NAME and show it.
+
+**`list-buffers`** `` — Command  
+Show all the buffers.
+
+### `emacs/windows.lisp`: Windows
+
+**`layout-windows`** `` — Function  
+
+**`split-window`** `` — Command  
+Split the window in two.
+
+**`delete-other-windows`** `` — Command  
+Make this window fill the screen.
+
+**`other-window`** `` — Command  
+Select the next window.
+
+**`switch-to-repl`** `` — Command  
+Show the Lisp REPL in another window and go there.
+
+### `emacs/help.lisp`: Help
+
+**`first-line`** `string` — Function  
+
+**`command-doc`** `command` — Function  
+
+**`describe-key`** `` — Command  
+Say what a key does.
+
+**`describe-bindings`** `` — Command  
+List every key and what it does.
+
+**`describe-function`** `` — Command  
+Show the documentation of a function.
+
+**`execute-command`** `` — Command  
+Run a command by name.
+
+**`exit-editor`** `` — Command  
+Leave the editor.
+
+### `emacs/macros.lisp`: Keyboard macros: the keys typed between F3 and F4, played back by F4
+
+**`start-macro`** `` — Command  
+Start recording a keyboard macro.
+
+**`end-macro`** `` — Command  
+Finish recording a keyboard macro.
+
+**`call-macro`** `` — Command  
+Play back the last keyboard macro.
+
+**`end-or-call-macro`** `` — Command  
+Finish recording a keyboard macro, or play the last one back.
+
+### `emacs/lisp.lisp`: Lisp: parentheses, indentation, evaluation
+
+**`escaped-p`** `line col` — Function  
+
+**`safe-start`** `line` — Function  
+A line at or before LINE that starts outside any string, comment or list: the REPL prompt, or the nearest line with a parenthesis in the first column.
+
+**`scan-parens`** `from to-line to-col function` — Function  
+Call FUNCTION with true (open) or false (close), the line and the column for every parenthesis that is code -- not in a string, a comment or a character -- from the start of line FROM up to TO-LINE, TO-COL.  Returns true if that position is inside a string.
+
+**`find-open-paren`** `line col` — Function  
+The position of the parenthesis that the one just before LINE, COL closes.
+
+**`find-close-paren`** `line col` — Function  
+The position after the parenthesis that closes the one at LINE, COL.
+
+**`matching-paren-position`** `` — Function  
+
+**`sexp-start-before-point`** `` — Function  
+Where the expression that ends at point begins.
+
+**`*body-forms*`** — Variable  
+
+**`body-form-p`** `word` — Function  
+
+**`indent-under`** `text col` — Function  
+
+**`lisp-indentation`** `target` — Function  
+The column line TARGET should start in, or NIL to leave it alone.
+
+**`indent-line`** `` — Command  
+Indent the current line as Lisp code.
+
+**`newline-and-indent`** `` — Command  
+Insert a line break and indent the new line.
+
+**`*minibuffer-stream*`** — Variable  
+
+**`*editor-restart*`** — Variable  
+The restart that abandons the current evaluation.
+
+**`*debugged*`** — Variable  
+The condition the debugger was last entered for, in this evaluation.
+
+**`editor-debugger`** `condition &optional hook` — Function  
+
+**`eval-captured`** `form` — Function  
+Evaluate FORM.  Returns its values as a list, what it printed, and the condition if the evaluation was abandoned.  Errors enter the debugger.
+
+**`read-forms`** `text` — Function  
+All the forms in TEXT, then :OK, :INCOMPLETE, or an error.
+
+**`printed`** `values` — Function  
+
+**`eval-and-show`** `text` — Function  
+Evaluate the forms in TEXT; show the result in the echo area, and anything longer in the buffer *output*.
+
+**`eval-last-sexp`** `` — Command  
+Evaluate the Lisp expression before point.
+
+**`eval-defun`** `` — Command  
+Evaluate the top-level form around point.
+
+**`eval-buffer`** `` — Command  
+Evaluate the whole buffer.
+
+**`eval-expression`** `` — Command  
+Read a Lisp expression in the minibuffer and evaluate it.
+
+**`name-at-point`** `` — Function  
+The symbol's name that point is in or just after, as it is written; or NIL.
+
+**`find-definition`** `` — Command  
+Go to the definition of a function, macro, variable or command: by default the one whose name point is on.  M-, comes back.
+
+**`pop-definition`** `` — Command  
+Go back to where M-. was last typed.
+
+### `emacs/repl.lisp`: The REPL buffer
+
+**`repl-buffer`** `` — Function  
+
+**`repl-emit`** `string` — Function  
+
+**`repl-prompt`** `` — Function  
+
+**`repl-prompt-line`** `&optional (b *buf*)` — Function  
+
+**`repl-input`** `` — Function  
+
+**`repl-return`** `` — Command  
+Evaluate the input at the prompt, if it is complete; otherwise start a new line.
+
+**`repl-history`** `step` — Function  
+
+**`repl-previous-input`** `` — Command  
+Recall the previous input.
+
+**`repl-next-input`** `` — Command  
+Recall the next input.
+
+**`repl-beginning-of-line`** `` — Command  
+Move to the start of the input, or of the line.
+
+### `emacs/dired.lisp`: Dired: a directory as a buffer.  Each line is a file; keys act on it.
+
+**`dentry`** — Structure  
+
+**`*dired-name-column*`** — Variable  
+
+**`cwd-directory`** `` — Function  
+
+**`directory-string`** `text` — Function  
+TEXT as the name of a directory: absolute, backslashes, one at the end.
+
+**`parent-directory`** `dir` — Function  
+
+**`directory-name-p`** `name` — Function  
+
+**`read-directory`** `dir` — Function  
+The files in DIR as a list of DENTRYs.
+
+**`dired-sorted`** `entries key` — Function  
+
+**`dired-line`** `entry` — Function  
+
+**`dired-render`** `b` — Function  
+Write the buffer's entries out as its text.
+
+**`dired-read`** `b &optional keep` — Function  
+Read the buffer's directory again; put point on the file named KEEP if it is there.
+
+**`dired-buffer`** `dir` — Function  
+
+**`dired-entry`** `` — Function  
+
+**`dired-path`** `entry` — Function  
+
+**`dired-real-entry`** `` — Function  
+
+**`dired-attributes`** `b i n` — Function  
+
+**`dired-change-directory`** `dir &optional keep` — Function  
+
+**`check-unix`** `ok errno what name` — Function  
+
+**`dired-target`** `prompt` — Function  
+
+**`file-name-of`** `path` — Function  
+
+**`dired`** `` — Command  
+Edit a directory: list its files, and open, copy, rename or delete them.
+
+**`dired-next-line`** `` — Command  
+Move to the next file.
+
+**`dired-previous-line`** `` — Command  
+Move to the previous file.
+
+**`dired-find-file`** `` — Command  
+Open the file on this line, or go into the directory.
+
+**`dired-find-file-other-window`** `` — Command  
+Open the file on this line in another window.
+
+**`dired-up-directory`** `` — Command  
+Go to the directory that contains this one.
+
+**`dired-refresh`** `` — Command  
+Read the directory again.
+
+**`dired-flag-deletion`** `` — Command  
+Flag this file for deletion (x deletes the flagged files).
+
+**`dired-unflag`** `` — Command  
+Take the deletion flag off this file.
+
+**`dired-unflag-all`** `` — Command  
+Take the deletion flag off every file.
+
+**`dired-delete-entry`** `entry` — Function  
+
+**`dired-execute`** `` — Command  
+Delete the files flagged for deletion.
+
+**`dired-delete`** `` — Command  
+Delete the file on this line (an empty directory too).
+
+**`dired-rename`** `` — Command  
+Rename the file on this line, or move it by giving a path.
+
+**`dired-copy`** `` — Command  
+Copy the file on this line.
+
+**`dired-create-directory`** `` — Command  
+Make a new directory.
+
+**`dired-load-file`** `` — Command  
+Load the file on this line into Lisp: source, or a compiled fasl.
+
+**`dired-sort`** `` — Command  
+Change the order of the listing: by name, by date (newest first), by size (largest first).
+
+**`dired-quit`** `` — Command  
+Leave Dired.
+
+**`dired-help`** `` — Command  
+Say what the Dired keys are.
+
+### `emacs/main.lisp`: The command loop
+
+**`read-prefix`** `` — Function  
+Read a numeric prefix argument, if one is being typed: C-u (4), C-u C-u (16), C-u 12, M-1 M-2.  Returns the number or NIL; the key after it is left to be read again.
+
+**`run-command`** `command keys` — Function  
+Run COMMAND -- as many times as the prefix argument says, unless it is a command that takes the argument itself (its TAKES-PREFIX property).
+
+**`editor-interrupted`** `condition hook` — Function  
+The debugger hook while the editor runs.  Ctrl-Break (or Ctrl-Alt-Shift) outside an evaluation stops the command that is running, as C-g would if it could be typed, and the editor carries on.  (Inside an evaluation the hook is EDITOR-DEBUGGER, which shows the interrupted code's restarts.)
+
+**`emacs`** `&optional file` — Function  
+Run the editor until C-x C-c.
+
+**`build-emacs`** `&optional (name "emacs.exe")` — Function  
+Save the editor as a stand-alone program: EMACS [file].

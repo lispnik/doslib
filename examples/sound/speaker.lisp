@@ -35,13 +35,10 @@
 
 (defun sound (divisor)
   "Start a tone of 1193182/DIVISOR Hz."
-  (outb #x43 #xB6)                      ; channel 2, low byte then high, square wave
-  (outb #x42 (logand divisor #xFF))
-  (outb #x42 (ash divisor -8))
-  (outb #x61 (logior (logand (inb #x61) #xFF) 3)))    ; gate the timer and connect the speaker
+  (speaker-divisor divisor))
 
 (defun quiet ()
-  (outb #x61 (logand (inb #x61) #xFC)))
+  (speaker-off))
 
 (defun beep (&optional (frequency 880) (ticks 4))
   "Sound FREQUENCY Hz (19 to 20000 or so) for TICKS BIOS ticks of 1/18.2 s

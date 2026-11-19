@@ -47,13 +47,6 @@
 (defun free-bytes ()
   (multiple-value-bind (ax bx cx) (int86 #x21 :ax #x3600 :dx 0)
     (* (word16 ax) (word16 bx) (word16 cx))))
-(defvar *dos-buffer* nil)
-(defun dos-string (string)              ; a copy of STRING where DOS can read it
-  (unless *dos-buffer* (setf *dos-buffer* (dos-alloc 512)))
-  (loop for c across string for i from 0
-        do (setf (sap-ref-8 (int-sap (linear *dos-buffer*)) i) (char-code c))
-        finally (setf (sap-ref-8 (int-sap (linear *dos-buffer*)) (length string)) 0))
-  *dos-buffer*)
 ;;; ---- the commands
 (defvar *commands* '())
 (defmacro defcommand (name (&rest args) help &body body)

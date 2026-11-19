@@ -199,7 +199,7 @@ REM without it they are loaded through ASDF, which takes longer.
 SET DEMOSBCL=sbcl --noinform --eval "(asdf:load-system :doslib/examples)"
 IF EXIST D:\SBCL\DOSLIB.COR SET DEMOSBCL=sbcl --core D:\SBCL\DOSLIB.COR --noinform
 IF "%1"=="" GOTO menu
-%DEMOSBCL% --eval "(doslib-examples:run '%1)" --quit
+%DEMOSBCL% --eval "(doslib-examples:run-arguments)" --quit --end-toplevel-options %1 %2 %3 %4 %5 %6 %7 %8 %9
 GOTO end
 :menu
 %DEMOSBCL% --eval "(doslib-examples:menu)" --quit
@@ -233,6 +233,9 @@ SBCL for DOS
 sbcl                the Lisp prompt, with ASDF loaded; (sb-ext:exit) leaves
 demo                list the examples and choose one
 demo plasma         run one example (any key usually ends it)
+demo speaker scale  ... with arguments for it
+Ctrl-Break          stops Lisp that is running; so does Ctrl-Alt-Shift, for
+                    keyboards without a Break key
 emacs [file]        the editor: F1 lists keys, C-c C-z is the REPL, C-x d is
                     Dired, C-x C-c leaves
 
@@ -430,6 +433,10 @@ make_utm_config() {
       <key>Hardware</key><string>pcspk</string>
       <key>Identifier</key><string>`uuidgen`</string>
     </dict>
+    <dict>
+      <key>Hardware</key><string>sb16</string>
+      <key>Identifier</key><string>`uuidgen`</string>
+    </dict>
   </array>
 </dict>
 </plist>
@@ -480,6 +487,29 @@ fdd_02_type = none
 EOF
 }
 
+# MacBox shows the machines listed in its Config file (JSON), not the
+# folders it finds, and writes that file itself: so add ours only while it
+# is not running.
+register_macbox() {
+    list="$(dirname "$macdir")/Config"
+    if grep -q -F "SBCL on FreeDOS" "$list" 2>/dev/null; then return; fi
+    if pgrep -x MacBox > /dev/null 2>&1; then
+        echo "run-dos.sh: quit MacBox and run this again, to add the machine to its list" >&2
+        return
+    fi
+    python3 - "$list" "$macdir" <<'EOF'
+import json, os, sys
+path, machine = sys.argv[1], sys.argv[2]
+try:
+    machines = json.load(open(path))
+except (OSError, ValueError):
+    machines = []
+machines.append({'name': 'SBCL on FreeDOS', 'path': machine,
+                 'description': 'FreeDOS with SBCL, doslib and the editor. VGA plus a monochrome card.'})
+json.dump(machines, open(path, 'w'))
+EOF
+}
+
 command=${1:-run}
 if [ -n "$utm" ] && [ "$command" = run ]; then command=utm-open; fi
 if [ -n "$macbox" ] && [ "$command" = run ]; then command=macbox-open; fi
@@ -488,6 +518,7 @@ case "$command" in
         need_stopped
         if [ ! -f "$boot" ] || [ ! -f "$data" ]; then make_boot; make_data; copy_files; build; fi
         make_macbox_config
+        register_macbox
         echo "the machine is in $macdir; start \"SBCL on FreeDOS\" from MacBox"
         echo "(the first time, press F1 when its BIOS reports a CMOS checksum error)"
         open -a MacBox ;;
@@ -516,8 +547,8 @@ case "$command" in
     run)
         if running; then echo "run-dos.sh: the DOS machine is already running" >&2; exit 1; fi
         if [ ! -f "$boot" ] || [ ! -f "$data" ]; then make_boot; make_data; copy_files; build; fi
-        # The PC speaker and an AdLib card, heard through the Mac (RUN_DOS_SOUND=0: neither)
-        sound="-audiodev coreaudio,id=snd -machine pcspk-audiodev=snd -device adlib,audiodev=snd"
+        # The PC speaker, an AdLib card and a Sound Blaster 16, heard through the Mac (RUN_DOS_SOUND=0: neither)
+        sound="-audiodev coreaudio,id=snd -machine pcspk-audiodev=snd -device adlib,audiodev=snd -device sb16,audiodev=snd"
         if [ "${RUN_DOS_SOUND:-1}" = 0 ]; then sound=; fi
         # A second display card, for the editor's M-x live (QEMU's own window
         # shows one display at a time: its View menu switches between them)

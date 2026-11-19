@@ -41,6 +41,7 @@
           (let ((changed nil))
                (dolist (hook *idle-hooks*)
                  (handler-case (when (funcall hook) (setf changed t))
+                   (quit-command () (setf changed t))   ; Ctrl-Break: it gets another turn
                    (error (e)           ; a broken hook must not wedge the editor
                      (remove-idle-hook hook)
                      (message "Idle hook removed after an error: ~A" e)
@@ -51,7 +52,10 @@
   (if *unread*
       (pop *unread*)
       (let* ((early-shift (wait-for-key))
-             (ax (word16 (int86 #x16 :ax #x1000))) (ascii (lo ax)) (scan (hi ax))
+             ;; (a key of 0000 is what the BIOS leaves behind for Ctrl-Break)
+             (ax (loop for ax = (word16 (int86 #x16 :ax #x1000))
+                       unless (zerop ax) return ax))
+             (ascii (lo ax)) (scan (hi ax))
              (shift (logior (or early-shift 0) (peek #x417)))
              (key (cond ((and (member ascii '(0 #xE0)) (/= scan 0)) (extended-key scan (logtest shift 3)))
                         ((= ascii 8) (if (= scan #x0E) "<backspace>" "C-h"))

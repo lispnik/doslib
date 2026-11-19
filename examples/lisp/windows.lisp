@@ -19,13 +19,9 @@
 (in-package #:doslib-examples.windows)
 
 ;;; ---- the mouse, in character cells
-(defun mouse-reset () (= (word16 (int86 #x33 :ax 0)) #xFFFF))
 (defun mouse ()
-  (multiple-value-bind (ax bx cx dx) (int86 #x33 :ax 3)
-    (declare (ignore ax))
-    (values (min 79 (floor (word16 cx) 8)) (min 24 (floor (word16 dx) 8)) (logtest bx 1))))
-(defun show-mouse () (int86 #x33 :ax 1))
-(defun hide-mouse () (int86 #x33 :ax 2))
+  (multiple-value-bind (column row buttons) (mouse-cell)
+    (values column (min 24 row) (logtest buttons 1))))
 
 (defvar *windows* '() "Bottom first; the last is on top.")
 (defvar *desktop-colour* #x13)
@@ -104,11 +100,11 @@
 
 ;;; ---- the desktop
 (defun redraw ()
-  (hide-mouse)                          ; the pointer must not be drawn over, or under
+  (mouse-hide)                          ; the pointer must not be drawn over, or under
   (text-fill 0 0 80 25 *desktop-colour* (code-char 176))
   (text-put 0 24 (format nil "~80A" " Click a button.  Drag a window by its title.  [x] closes it.  Esc leaves.") #x70)
   (mapc #'draw *windows*)
-  (show-mouse))
+  (mouse-show))
 (defun window-at (column row)
   (find-if (lambda (w) (inside-p w column row)) *windows* :from-end t))
 (defun raise (window)
@@ -134,9 +130,9 @@
             ((= row (y window)) (drag window column))
             (t (let ((widget (find-if (lambda (w) (inside-p w column row)) (children window))))
                  (when widget
-                   (hide-mouse)
+                   (mouse-hide)
                    (click widget (- column (screen-x widget)) (- row (screen-y widget)))
-                   (show-mouse)))))
+                   (mouse-show)))))
       (redraw))))
 
 ;;; ---- a new kind of widget, to show what adding one takes
@@ -201,7 +197,7 @@
 
 (defun main ()
   "A window system in a page of CLOS, with the mouse."
-  (unless (mouse-reset)
+  (unless (mouse-init)
     (format t "~&There is no mouse driver.  Load CTMOUSE and try again.~%")
     (return-from main nil))
   (setf *running* t *desktop-colour* #x13 *shadows* t)
@@ -215,7 +211,7 @@
              (multiple-value-bind (column row down) (mouse)
                (when (and down (not was-down)) (press column row))
                (setf was-down (nth-value 2 (mouse))))))
-  (hide-mouse)
+  (mouse-hide)
   (text-fill 0 0 80 25 7)
   (text-cursor 0 0)
   (show-text-cursor)

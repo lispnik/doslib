@@ -16,6 +16,7 @@
 
 (defvar *critical-stub* nil)            ; the handler's segment, in DOS memory
 (defvar *critical-old-vector* nil)      ; (segment . offset) to put back
+(defvar *critical-depth* 0)             ; how many callers have asked for it
 
 (defparameter *critical-error-names*
   #("disk is write-protected" "unknown unit" "drive not ready" "unknown command"
@@ -23,7 +24,10 @@
     "printer out of paper" "write fault" "read fault" "general failure"))
 
 (defun catch-critical-errors ()
-  "From now on DOS device errors fail quietly, and (critical-error) tells of them."
+  "From now on DOS device errors fail quietly, and (critical-error) tells of
+them.  Calls nest: the handler stays until RELEASE-CRITICAL-ERRORS has been
+called as often as this has."
+  (incf *critical-depth*)
   (unless *critical-stub*
     (let ((segment (dos-alloc 32)))
       (loop for byte in '(#x2E #x89 #x3E #x10 #x00        ; mov cs:[0010h],di   the error code
@@ -39,12 +43,20 @@
       (setf *critical-stub* segment)))
   t)
 
-(defun release-critical-errors ()
-  "Give interrupt 24h back to its previous handler."
-  (when *critical-stub*
+(defun release-critical-errors (&optional all)
+  "Undo one CATCH-CRITICAL-ERRORS -- or, with ALL, every one.  When none is
+left, interrupt 24h goes back to its previous handler."
+  (setf *critical-depth* (if all 0 (max 0 (1- *critical-depth*))))
+  (when (and *critical-stub* (zerop *critical-depth*))
     (int86 #x31 :ax #x0201 :bx #x24 :cx (car *critical-old-vector*) :dx (cdr *critical-old-vector*))
+    (dos-free *critical-stub*)
     (setf *critical-stub* nil))
   nil)
+
+(defmacro with-critical-errors-caught (&body body)
+  "Run BODY with DOS device errors failing quietly, as CATCH-CRITICAL-ERRORS."
+  `(progn (catch-critical-errors)
+          (unwind-protect (progn ,@body) (release-critical-errors))))
 
 (defun critical-error ()
   "If a device has failed since this was last asked, the description of the

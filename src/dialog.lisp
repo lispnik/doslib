@@ -70,9 +70,19 @@ user may also type Lisp forms, evaluated in that package."
   (let* ((restarts (if through
                        (ldiff restarts (rest (member through restarts :key #'restart-name)))
                        restarts))
+         ;; A restart is chosen with one key: 1 to 9, then letters (but not
+         ;; E, which evaluates).  The innermost restarts are the ones kept
+         ;; if there are more than the keys, or the screen, have room for.
+         (keys "123456789ABCDFGH")
+         (restarts (subseq restarts 0 (min (length restarts) (length keys))))
          (width 66) (x 7) (inner (- width 4))
-         (message (text-wrap (princ-to-string condition) inner))
-         (height (+ (length message) (length restarts) (if eval-package 1 0) 6))
+         (extra (+ (length restarts) (if eval-package 1 0) 6))
+         (message (let ((lines (text-wrap (princ-to-string condition) inner))
+                        (room (max 1 (- 25 extra))))
+                    (if (> (length lines) room)         ; too long for the screen: say so
+                        (append (subseq lines 0 (1- room)) (list "..."))
+                        lines)))
+         (height (+ (length message) extra))
          (y (max 0 (floor (- 25 height) 2)))
          (saved (save-text-screen))
          (row (+ y 1)))
@@ -84,7 +94,7 @@ user may also type Lisp forms, evaluated in that package."
            (incf row)
            (loop for restart in restarts for i from 1
                  do (text-put (+ x 2) row
-                              (let ((line (format nil "~D  ~A" i restart)))
+                              (let ((line (format nil "~C  ~A" (char keys (1- i)) restart)))
                                 (subseq line 0 (min inner (length line))))
                               #x1E)
                     (incf row))
@@ -96,12 +106,14 @@ user may also type Lisp forms, evaluated in that package."
              (flet ((note (text) (text-put (+ x 2) note-row
                                            (format nil "~VA" inner (subseq text 0 (min inner (length text))))
                                            #x1B)))
-               (note "Press the number of your choice.")
+               (note (if (> (length restarts) 9)
+                         "Press the number or letter of your choice."
+                         "Press the number of your choice."))
                (loop
                  (let* ((key (get-key))
-                        (digit (and (characterp key) (digit-char-p key))))
-                   (cond ((and digit (<= 1 digit (length restarts)))
-                          (invoke-restart-interactively (nth (1- digit) restarts)))
+                        (choice (and (characterp key) (position (char-upcase key) keys))))
+                   (cond ((and choice (< choice (length restarts)))
+                          (invoke-restart-interactively (nth choice restarts)))
                          ((and eval-package (characterp key) (char-equal key #\e))
                           (let ((text (dialog-ask "Lisp:")))
                             (unless (string= (string-trim " " text) "")

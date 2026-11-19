@@ -130,6 +130,8 @@ class Session:
                 self.graphics(*rest)
             elif kind == 'key':                 # ('key', name, ...)
                 m.key(*rest)
+            elif kind == 'hold':                # ('hold', name): a key kept down a while
+                m.hold(rest[0])
             elif kind == 'type':                # ('type', text)
                 m.type(rest[0])
             elif kind == 'line':                # ('line', text): at a prompt that echoes

@@ -47,8 +47,12 @@
   "Put the hardware cursor at X, Y."
   (int86 #x10 :ax #x0200 :bx 0 :dx (logior (ash y 8) x))
   (values))
-(defun hide-text-cursor () (int86 #x10 :ax #x0100 :cx #x2000) (values))
-(defun show-text-cursor () (int86 #x10 :ax #x0100 :cx #x0607) (values))
+(defun hide-text-cursor ()
+  "Make the hardware cursor invisible."
+  (int86 #x10 :ax #x0100 :cx #x2000) (values))
+(defun show-text-cursor ()
+  "Make the hardware cursor the usual underline."
+  (int86 #x10 :ax #x0100 :cx #x0607) (values))
 
 (defun save-text-screen ()
   "The whole text screen and the cursor, for RESTORE-TEXT-SCREEN."
@@ -57,6 +61,7 @@
     (list cells (peek16 #x450) (peek16 #x460))))
 
 (defun restore-text-screen (saved)
+  "Put back the screen and cursor that SAVE-TEXT-SCREEN returned."
   (destructuring-bind (cells cursor shape) saved
     (dotimes (i 4000) (setf (sap-ref-8 *text-screen* i) (aref cells i)))
     (int86 #x10 :ax #x0100 :cx shape)

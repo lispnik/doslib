@@ -39,8 +39,8 @@ load what you want:
 | File | Provides |
 |---|---|
 | `machine.lisp` | `machine-code`, `int86` (software interrupts), `lo`, `hi`, `word16` |
-| `ports.lisp` | `inb`, `outb`, `inl`, `outl` |
-| `dos.lisp` | `real-int` (real-mode interrupts through DPMI), `dos-alloc`, `linear`, `without-break-checking` (Ctrl-C as a key) |
+| `ports.lisp` | `inb`, `outb`, `inw`, `outw`, `inl`, `outl`, `cmos` |
+| `dos.lisp` | `real-int` (real-mode interrupts through DPMI), `dos-alloc`, `dos-free`, `dos-scratch`, `dos-string`, `linear`, `without-break-checking` (Ctrl-C as a key), `catching-interrupt` (Ctrl-Break) |
 | `cpuid.lisp` | `cpuid` |
 | `memory.lisp` | `peek`, `peek16`, `peek32` |
 | `interrupts.lisp` | `get-vector`, `set-vector`, `code-selector`, `data-selector` |
@@ -48,12 +48,40 @@ load what you want:
 | `critical.lisp` | `catch-critical-errors`, `critical-error`: DOS device errors without "Abort, Retry, Fail?" |
 | `dialog.lisp` | `restart-dialog`, `dialog-ask`: choose a restart from a box on the screen |
 | `hotkey.lisp` | `install-hotkey`, `remove-hotkeys`, `poll-hotkeys`: keys taken through the BIOS keyboard intercept |
-| `video.lisp` | `video-mode`, `set-palette`, `rainbow-palette`, `plot`, `draw-line`, `*vga*` |
-| `input.lisp` | `wait-tick`, `key-pressed-p`, `wait-key`, `finish` |
+| `video.lisp` | `video-mode`, `with-video-mode`, `set-palette`, `rainbow-palette`, `plot`, `draw-line`, `*vga*`, `vesa-set-mode` |
+| `input.lisp` | `ticks`, `wait-tick`, `key-pressed-p`, `wait-key`, `finish` |
+| `sound.lisp` | `speaker-on`, `speaker-off`, `speaker-beep`: the PC speaker |
+| `mouse.lisp` | `mouse-init`, `mouse-position`, `mouse-cell`, `mouse-pixel`, `mouse-show`, `mouse-hide`: the mouse driver |
+| `disk.lisp` | `dos-read-sectors`, `bios-read-sectors`: disks, a sector at a time |
+| `pci.lisp` | `pci-read`, `pci-write`, `pci-devices`: PCI configuration space |
+| `serial.lisp` | `serial-open`, `serial-read-byte`, `serial-write-string`: serial ports, polled |
 | `init.lisp` | `doslib-init`, run at load and whenever a saved core starts |
+
+`doc/reference.md` lists every exported name with its arguments and what
+it does; `sbcl --script doc/make-reference.lisp` makes it again from the
+documentation strings in the sources.
 
 The instructions Lisp cannot express (INT, IN, OUT, CPUID) are assembled
 by hand into malloc'ed memory and called with `alien-funcall`.
+
+### Interrupting a program
+
+Ctrl-Break stops Lisp that is running, even a loop that calls nothing:
+the condition `sb-sys:interactive-interrupt` is signalled there, and if
+nothing handles it SBCL's debugger opens, with a restart that carries on.
+Ctrl, Alt and Shift pressed together do the same, for keyboards that have
+no Break key (`(setf (interrupt-chord) nil)` turns that off); so does
+Ctrl-C, once DOS notices it, which is when the program next calls DOS.
+
+```lisp
+(catching-interrupt (loop))       ; => :INTERRUPTED, when you have had enough
+```
+
+`doslib-examples:run` catches the interrupt and puts the screen back in
+text mode.  In the editor, Ctrl-Break during an evaluation opens the
+editor's debugger on it, and at any other time stops the command that is
+running.  This needs the DOS port's runtime of November 2026 or later
+(`(interrupts-supported-p)` says whether it is there).
 
 ## The examples
 
@@ -71,14 +99,17 @@ Each example is one file with a package of its own,
 
 | Category | Examples |
 |---|---|
-| `graphics/` | bmpview fire font gcviz lsystem mandel modex paint plasma raycast raytrace stars textfx turtle vesa wire3d |
+| `graphics/` | bmpview fire font gcviz lsystem mandel modex paint plasma raycast raytrace sprite stars textfx turtle vesa wire3d |
 | `system/` | asm asmdsl calc diskinfo dosinfo fatview intvec ivt mcbwalk memmap pciscan ports printer probes serial sysinfo |
 | `lisp/` | bench hotfix life live restarts resume shell snake special windows |
-| `sound/` | adlib speaker |
+| `sound/` | adlib blaster speaker |
 | `network/` | browse files irc netpong ntp remote websrv wget |
 
 `data/` holds files the examples read; `support/` holds the host-side
 half of the serial example.
+
+`blaster` wants a Sound Blaster (the launcher's QEMU machine has an
+`sb16`); `sprite`, `paint` and `windows` want a mouse driver.
 
 To add one, write a file with a `main` function, register it with
 `doslib-examples:define-example`, and list it in `doslib.asd`.
@@ -93,7 +124,9 @@ To add one, write a file with a `main` function, register it with
 
 `F1` lists the keys. `C-c C-z` opens the REPL, `C-x d` is Dired, and
 `C-x C-c` leaves. An error in evaluated code opens a debugger that lists
-the restarts.
+the restarts; so does Ctrl-Break, if the code will not stop. `M-.` goes to
+the definition of the name at the cursor and `M-,` comes back; `C-_`
+undoes and `M-_` redoes.
 
 ### The extras
 
@@ -139,8 +172,8 @@ current directory:
 `./run-dos.sh` starts FreeDOS in QEMU with SBCL, ASDF and this project
 installed in `D:\DOSLIB`; `./run-dos.sh utm` does the same for UTM, and
 `./run-dos.sh build` compiles everything on the DOS machine. At the DOS
-prompt, `demo` lists the examples, `demo plasma` runs one, and `emacs`
-starts the editor. The comments at the top of the script say what it
+prompt, `demo` lists the examples, `demo plasma` runs one (`demo speaker
+scale` passes it an argument), and `emacs` starts the editor. The comments at the top of the script say what it
 needs: QEMU, mtools, a FreeDOS image, a packet driver, and SBCL built for
 DOS.
 
@@ -152,7 +185,7 @@ its screen.
 
 ```
 ./run-dos.sh update && ./run-dos.sh build     # the tests run what was last built
-tests/run.py                                  # everything: about ten minutes
+tests/run.py                                  # everything: about twelve minutes
 tests/run.py unit fire emacs-edit             # some of it
 tests/run.py --list
 ```

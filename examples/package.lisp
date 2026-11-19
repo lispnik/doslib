@@ -9,7 +9,7 @@ own, DOSLIB-EXAMPLES.<NAME>, with a MAIN function, and is registered here:
   (doslib-examples:list-examples)
   (doslib-examples:run \"plasma\")
   (doslib-examples:menu)")
-  (:export #:define-example #:run #:list-examples #:list-names #:example-names #:menu #:data-file
+  (:export #:define-example #:run #:run-arguments #:list-examples #:list-names #:example-names #:menu #:data-file
            #:build-executable #:save-core))
 (in-package #:doslib-examples)
 
@@ -28,9 +28,37 @@ own, DOSLIB-EXAMPLES.<NAME>, with a MAIN function, and is registered here:
       (error "There is no example named ~A.  (doslib-examples:list-examples) shows them." name)))
 
 (defun run (name &rest arguments)
-  "Run the example NAME (a string or symbol), passing ARGUMENTS to its MAIN."
-  (apply (example-function (find-example name)) arguments)
+  "Run the example NAME (a string or symbol), passing ARGUMENTS to its MAIN.
+Ctrl-Break (or Ctrl-Alt-Shift) stops it: the screen goes back to text, the
+speaker is silenced, and RUN returns."
+  (let ((example (find-example name)))
+    (when (eq (doslib:catching-interrupt (apply (example-function example) arguments) nil)
+              :interrupted)
+      (doslib:speaker-off)
+      (unless (= (doslib:current-video-mode) 3) (doslib:video-mode 3))
+      (doslib:show-text-cursor)
+      (format t "~&~A was interrupted.~%" (example-name example))))
   (values))
+
+(defun command-line-arguments ()
+  "What follows --end-toplevel-options on the command line.  (SBCL takes its
+own options out of *POSIX-ARGV*, that one included, when it has read them.)"
+  (let ((marked (member "--end-toplevel-options" sb-ext:*posix-argv* :test #'string=)))
+    (rest (or marked sb-ext:*posix-argv*))))
+
+(defun run-arguments (&optional (arguments (command-line-arguments)))
+  "Run the example named by the first of ARGUMENTS, passing it the rest: by
+default, what follows --end-toplevel-options on the command line, which is
+how DEMO.BAT passes on what was typed after DEMO.  An argument that is a
+whole number is passed as a number, anything else as a string."
+  (if arguments
+      (apply #'run (first arguments)
+             (mapcar (lambda (argument)
+                       (if (and (plusp (length argument)) (every #'digit-char-p argument))
+                           (parse-integer argument)
+                           argument))
+                     (rest arguments)))
+      (menu)))
 
 (defun list-examples (&optional (stream *standard-output*))
   "Print the examples, by category."

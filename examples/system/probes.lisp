@@ -26,7 +26,6 @@
 ;;; ---- small things
 (defun bit-p (value n) (logbitp n value))
 (defun port (address) (logand (inb address) #xFF))
-(defun ticks () (peek32 #x46C))         ; the BIOS's count of timer ticks, 18.2 a second
 
 (defmacro within-ticks ((ticks) &body test)
   "Evaluate TEST over and over until it is true (return that) or TICKS timer
@@ -60,11 +59,8 @@ come -- a controller that is not there -- so nothing waits without this."
 ;;; Port 70h selects one of 128 bytes, port 71h reads or writes it.  Bit 7
 ;;; of port 70h is not part of the address: it switches the NMI off, so it
 ;;; is left clear.
-(defun cmos (register)
-  (outb #x70 (logand register #x7F))
-  (port #x71))
+;;; (CMOS and BCD are the library's.)
 (defun cmos16 (register) (+ (cmos register) (* 256 (cmos (1+ register)))))
-(defun bcd (byte) (+ (* 10 (ash byte -4)) (logand byte 15)))
 
 ;;; ---- the clock
 ;;; Once a second the chip copies its counters into bytes 0-9, and while it
