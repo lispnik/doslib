@@ -1,13 +1,13 @@
-;;;; Which keys are held down: the keyboard's own interrupt
+;;;; Which keys are held down: every scan code the keyboard sends
 ;;;;
 ;;;; The BIOS hands over keys one at a time as they are typed, and says
 ;;;; nothing when one is let go.  A game needs to know that left and fire
 ;;;; are both down now.  The keyboard says so itself: interrupt request 1
 ;;;; for every press and every release, with a scan code at port 60h (the
-;;;; key's number, plus 80h for a release).  The library's WITH-KEY-STATE
-;;;; puts a machine-code handler on that interrupt which keeps the scan
-;;;; codes and passes the interrupt on to the BIOS; KEY-DOWN-P and KEYS-DOWN
-;;;; then answer from Lisp.
+;;;; key's number, plus 80h for a release).  The BIOS reads it and offers
+;;;; it to interrupt 15h before using it; the library's WITH-KEY-STATE puts
+;;;; a few real-mode instructions there that keep every scan code, and
+;;;; KEY-DOWN-P and KEYS-DOWN then answer from Lisp.
 ;;;;
 ;;;; This draws the keyboard's 88 scan codes and lights the ones held down.
 ;;;; Hold several at once: most keyboards manage any two, and some
@@ -50,7 +50,7 @@
          (progn
            (video-mode 3) (hide-text-cursor)
            (text-put 2 0 "Which keys are held down" 11)
-           (text-put 2 1 "From the keyboard's interrupt, not the BIOS.  Hold several; Esc leaves." 7)
+           (text-put 2 1 "Every scan code the keyboard sends, kept.  Hold several; Esc leaves." 7)
            (with-key-state
              (loop with escape = nil
                    do (let ((down (keys-down)))
@@ -72,9 +72,9 @@
     (format t "~&Most keys held at once: ~D.~%" most)))
 
 (defun main ()
-  "Which keys are held down, from the keyboard's own interrupt."
+  "Which keys are held down, from every scan code the keyboard sends."
   (keys))
 
 (doslib-examples:define-example "keys" 'main
   :category :system
-  :description "Which keys are held down, from the keyboard's own interrupt.")
+  :description "Which keys are held down, from every scan code the keyboard sends.")

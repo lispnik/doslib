@@ -4,8 +4,11 @@
 ;;;;   (doslib-examples:run "modplay")              a small song, made here
 ;;;;   (doslib-examples:run "modplay" "FILE.MOD")   a ProTracker module
 ;;;;   (doslib-examples:run "modplay" "FILE.MOD" 11025)   at another rate
-;;;;   (doslib-examples.modplay:write-song "SONG.MOD")    the song, as a file
-;;;; Esc (or any key) ends.  Without a card it says so and returns.
+;;;;   (doslib-examples:run "modplay" "FILE.MOD" "info")  what is in it, not played
+;;;;   (doslib-examples.modplay:write-song "MINE.MOD")    the song made here, as a file
+;;;; From DOS: DEMO MODPLAY SONG.MOD, DEMO MODPLAY SONG.MOD INFO.  A file that
+;;;; is not where the name says is looked for among the examples' data, where
+;;;; SONG.MOD is.  Esc (or any key) ends.  Without a card it says so and returns.
 ;;;;
 ;;;; A module is a piece of music as a tracker stores it: up to 31 samples
 ;;;; (short recordings, 8 bits, signed), and patterns of 64 rows by four
@@ -28,10 +31,27 @@
 ;;;; the end it says how many bytes were allocated while it played: a few
 ;;;; hundred a second, for the pointers and the keyboard calls.)
 ;;;;
+;;;; The file (PARSE-MOD reads it; examples/support/make-mod.py has the
+;;;; layout byte by byte): a title of 20 bytes; 31 sample headers of 30 --
+;;;; name, length in words with the big end first, as the Amiga had it,
+;;;; finetune, volume, where the loop starts and how long it is; the song's
+;;;; length and 128 orders; the letters "M.K." (or "M!K!", "FLT4", "4CHN":
+;;;; other trackers, same layout) at byte 1080; the patterns, as many as the
+;;;; highest number among the orders says, 1024 bytes each; and then the
+;;;; samples' data, one after another.
+;;;;
 ;;;; Effects done: 0 arpeggio, 1 and 2 slide up and down, 3 slide to note,
 ;;;; 4 vibrato, 5 and 6 (3 and 4 with a volume slide), 9 sample offset,
 ;;;; A volume slide, B position jump, C volume, D pattern break, F speed
-;;;; and tempo.  The E effects, 7 (tremolo) and 8 are ignored.
+;;;; (below 32) and tempo.  Sample loops, and finetune: a sample's finetune
+;;;; of n eighths of a semitone multiplies its periods by 2^(-n/96), where
+;;;; ProTracker has a table of periods for each setting -- the same to
+;;;; within a count of the period.
+;;;; Not done, and ignored when met: 7 (tremolo), 8, and all the E effects
+;;;; (fine slides, pattern loop, retrigger, note cut and delay, the filter).
+;;;; Slides stop at the periods of C-1 and B-3, as ProTracker's do.  Modules
+;;;; with more than four channels, or of the older 15-sample kind (which
+;;;; have no letters at 1080), are refused.
 ;;;;
 ;;;; Is Lisp fast enough?  Before it plays, the program mixes the song for a
 ;;;; fifth of a second by the BIOS's clock and counts the samples made: the
@@ -42,16 +62,27 @@
 ;;;; The row shown is the one being mixed, which the card plays up to two
 ;;;; blocks (0.09 s) later.
 ;;;;
-;;;; No module comes with DOSLIB, so the song is made here: five samples
-;;;; computed, four patterns written as lists, the whole put together as the
-;;;; bytes of a real "M.K." module and then read by the same parser a file
-;;;; goes through.
+;;;; Without a file the song is made here: five samples computed, four
+;;;; patterns written as lists, the whole put together as the bytes of a
+;;;; real "M.K." module and then read by the same parser a file goes
+;;;; through.  The module that comes with DOSLIB, examples/data/song.mod, is
+;;;; made in the same spirit but somewhere else: by a Python program on the
+;;;; machine DOSLIB is built on, examples/support/make-mod.py, which does
+;;;; not share a line with this file.  So it is a check of the parser:
+;;;; "info" (DESCRIBE-MOD) prints the title, the orders, each sample's
+;;;; header and a checksum of its data, the first rows of the patterns and
+;;;; a checksum of them all, and how long the song takes to play through
+;;;; once; make-mod.py --describe prints the same from its own reading of
+;;;; the file, and the two should agree to the letter.  When playing ends,
+;;;; the row the mixer had reached is printed with the number of samples
+;;;; made, and make-mod.py --at that number says where it should have been.
 ;;;;
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.modplay
   (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
-  (:export #:main #:write-song #:built-in-song #:parse-mod #:read-mod))
+  (:export #:main #:write-song #:built-in-song #:parse-mod #:read-mod #:find-mod
+           #:describe-mod))
 (in-package #:doslib-examples.modplay)
 
 ;;; ---- a module in memory
@@ -117,6 +148,14 @@
                                                     :initial-element 0)))
                              (replace cells bytes :start2 1084)
                              cells)))))
+
+(defun find-mod (file)
+  "FILE if there is such a file, or the file of that name among the examples'
+data (SONG.MOD is there), or NIL."
+  (let ((file (string file)))
+    (cond ((probe-file file) file)
+          ((ignore-errors (probe-file (doslib-examples:data-file file)))
+           (doslib-examples:data-file file)))))
 
 (defun read-mod (file)
   "The SONG in the module FILE."
@@ -188,6 +227,7 @@
   (left 0 :type fixnum)                 ; output samples left of this tick
   (remainder 0 :type fixnum)            ; ticks are not whole numbers of samples
   (mixed 0 :type fixnum)                ; output samples made so far
+  (rows 0 :type fixnum)                 ; rows begun so far
   (repeats 0 :type fixnum))             ; times the song has gone back to its start
 
 (defun new-player (song rate)
@@ -317,7 +357,8 @@
       (when (>= order length)
         (setf order 0) (incf (pl-repeats player)))
       (setf (pl-order player) order (pl-row player) row)))
-  (if (zerop (pl-tick player)) (start-row player) (continue-row player))
+  (cond ((zerop (pl-tick player)) (incf (pl-rows player)) (start-row player))
+        (t (continue-row player)))
   (incf (pl-tick player))
   ;; rate * 2.5 / tempo samples, the fraction carried to the next tick
   (let ((total (+ (pl-remainder player) (* 5 (pl-rate player))))
@@ -326,6 +367,67 @@
     (multiple-value-bind (samples remainder) (truncate total divisor)
       (setf (pl-remainder player) remainder)
       (max 1 samples))))
+
+;;; ---- what is in a module, in words: a check of the parser and of the
+;;; player's way through the song
+(defun data-checksum (data)
+  "A number that depends on every byte of DATA and on where it is."
+  (let ((sum 0))
+    (declare (fixnum sum))
+    (dotimes (i (length data) sum)
+      (setf sum (mod (+ sum (* (1+ i) (logand (aref data i) 255))) 65521)))))
+
+(defun once-through (song)
+  "Play SONG without making a sound until it goes back -- a jump to an order
+that is not after the one it is in, or the end of the orders.  Returns the
+rows and the ticks that took, and the time in seconds, a rational."
+  (let ((player (new-player song 22050)) (rows 0) (ticks 0) (time 0))
+    (loop (next-tick player)
+          (when (plusp (pl-repeats player)) (return (values rows ticks time)))
+          (setf rows (pl-rows player))
+          (incf ticks)
+          (incf time (/ 5 (* 2 (pl-tempo player)))))))
+
+(defun describe-mod (song &optional (bytes 0) (stream *standard-output*))
+  "Print what is in SONG (or the module file of that name; BYTES is the
+file's size): title, orders, a checksum of the patterns, the samples with a
+checksum of each one's data, the first four rows of the first three patterns
+in numbers -- period, sample, effect -- and what playing it through once
+comes to.  examples/support/make-mod.py
+--describe prints the same of the same file."
+  (when (or (stringp song) (pathnamep song))
+    (let ((file (find-mod song)))
+      (with-open-file (in file :element-type '(unsigned-byte 8))
+        (setf bytes (file-length in)))
+      (setf song (read-mod file))))
+  (let* ((orders (song-orders song)) (cells (song-patterns song))
+         (patterns (floor (length cells) 1024)))
+    (format stream "~&Title ~S, ~D bytes~%" (song-title song) bytes)
+    (format stream "~D orders: ~{~D~^ ~}~%" (length orders) (coerce orders 'list))
+    (format stream "~D patterns, checksum ~D~%" patterns (data-checksum cells))
+    (loop for number from 1 to 31
+          for instrument = (svref (song-instruments song) number)
+          when (plusp (length (ins-data instrument)))
+            do (format stream "Sample ~2D ~S: ~D bytes, tune ~D, volume ~D, loop ~D+~D, ~
+                               sum ~D~%"
+                       number (ins-name instrument) (length (ins-data instrument))
+                       (ins-finetune instrument) (ins-volume instrument)
+                       (ins-loop-start instrument) (ins-loop-length instrument)
+                       (data-checksum (ins-data instrument))))
+    (dotimes (pattern (min 3 patterns))
+      (dotimes (row 4)
+        (format stream "Pattern ~D row ~D:" pattern row)
+        (dotimes (c 4)
+          (let* ((at (+ (* 1024 pattern) (* 16 row) (* 4 c)))
+                 (b0 (aref cells at)) (b2 (aref cells (+ at 2))))
+            (format stream "~:[ |~;~] ~3D ~2,'0D ~X~2,'0X" (zerop c)
+                    (logior (ash (logand b0 15) 8) (aref cells (+ at 1)))
+                    (logior (logand b0 #xF0) (ash b2 -4))
+                    (logand b2 15) (aref cells (+ at 3)))))
+        (terpri stream)))
+    (multiple-value-bind (rows ticks time) (once-through song)
+      (format stream "Once through: ~D rows, ~D ticks, ~D ms~%" rows ticks (floor (* time 1000)))))
+  (values))
 
 ;;; ---- the mixer
 (defun mix-channel (channel mix start count)
@@ -671,8 +773,9 @@
 (defun play (song rate &optional file)
   "Play SONG until a key is pressed.  Returns interrupts, late blocks, seconds,
 bytes allocated meanwhile, seconds of song made, times it began again, the
-rate used and the samples a second the mixer can make; or NIL if there is no
-card that can."
+rate used, the samples a second the mixer can make, and the player (which
+knows the samples made, the rows begun and where it stopped); or NIL if
+there is no card that can."
   (unless (blaster-present-p)
     (format t "~&No Sound Blaster answered at port ~Xh.  (QEMU: -device sb16; ~
                SET BLASTER=A220 I5 D1 says where a card is.)~%" *blaster-port*)
@@ -740,26 +843,47 @@ card that can."
             (dma-stop *blaster-dma*)
             (text-fill 0 0 80 25 7) (text-cursor 0 0) (show-text-cursor)))
         (values handled late (/ (- (ticks) began) 18.2) allocated
-                (/ (pl-mixed player) (float rate)) (pl-repeats player) rate capacity)))))
+                (/ (pl-mixed player) (float rate)) (pl-repeats player) rate capacity
+                player)))))
 
 (defun main (&optional file (rate 22050))
-  "Play a ProTracker module, or the song built in."
-  (let ((rate (max 8000 (min 22050 (if (integerp rate) rate 22050))))
-        (song (handler-case (cond ((null file) (parse-mod (built-in-song)))
-                                  ((probe-file file) (read-mod file))
-                                  (t (error "there is no such file.")))
-                (error (condition)
-                  (format t "~&Cannot play ~A: ~A~%" (or file "the song") condition)
-                  (return-from main (values))))))
-    (multiple-value-bind (interrupts late seconds allocated song-seconds repeats rate capacity)
+  "Play a ProTracker module, or the song built in; or, with \"info\" where
+the rate goes, say what is in it."
+  (let* ((info (and (stringp rate) (string-equal rate "info")))
+         (rate (max 8000 (min 22050 (if (integerp rate) rate 22050))))
+         (found (and file (find-mod file)))
+         (bytes 0)
+         (song (handler-case
+                   (cond ((null file)
+                          (let ((built (built-in-song)))
+                            (setf bytes (length built))
+                            (parse-mod built)))
+                         (found
+                          (with-open-file (in found :element-type '(unsigned-byte 8))
+                            (setf bytes (file-length in)))
+                          (read-mod found))
+                         (t (error "there is no such file.")))
+                 (error (condition)
+                   (format t "~&Cannot play ~A: ~A~%" (or file "the song") condition)
+                   (return-from main (values))))))
+    (when info
+      (describe-mod song bytes)
+      (return-from main (values)))
+    (multiple-value-bind (interrupts late seconds allocated song-seconds repeats rate capacity
+                          player)
         (play song rate file)
       (when interrupts
         (format t "~&~S: ~,1F s of song mixed in ~,1F s at ~D samples a second~
                    ~[~:;, the song begun again ~:*~D time~:P~].~%~
-                   ~D interrupts, ~D block~:P late; ~:D bytes allocated meanwhile.~%~
+                   ~D interrupts (~,1F a second; ~,1F expected), ~D block~:P late; ~
+                   ~:D bytes allocated.~%~
+                   ~D samples made, ~D rows begun: the mixer was at order ~D, row ~D.~%~
                    The mixer can make ~:D samples a second: ~,1F times as many.~%"
                 (song-title song) song-seconds seconds rate repeats
-                interrupts late allocated capacity (/ capacity rate)))))
+                interrupts (/ interrupts (max seconds 0.1)) (/ rate (float +block+))
+                late allocated
+                (pl-mixed player) (pl-rows player) (pl-order player) (pl-row player)
+                capacity (/ capacity rate)))))
   (values))
 
 (doslib-examples:define-example "modplay" 'main

@@ -56,7 +56,7 @@ load what you want:
 | `mouse.lisp` | `mouse-init`, `mouse-position`, `mouse-cell`, `mouse-pixel`, `mouse-show`, `mouse-hide`: the mouse driver |
 | `disk.lisp` | `dos-read-sectors`, `bios-read-sectors`: disks, a sector at a time |
 | `irq.lisp` | `with-irq-handler`, `install-irq-handler`, `irq-count`, `irq-read-byte`: handlers for hardware interrupts, made to order |
-| `keystate.lisp` | `with-key-state`, `key-down-p`, `keys-down`: which keys are held down, from the keyboard's interrupt |
+| `keystate.lisp` | `with-key-state`, `key-down-p`, `keys-down`: which keys are held down, from every scan code the keyboard sends |
 | `dma.lisp` | `dma-start`, `dma-stop`, `dma-address`, `dma-count`, `with-dma-memory`: the DMA controllers |
 | `blaster.lisp` | `blaster-present-p`, `blaster-write`, `blaster-read`, `blaster-version`, `with-blaster-interrupt`, `blaster-interrupts`: the Sound Blaster's settings, its processor and its interrupt |
 | `pci.lisp` | `pci-read`, `pci-write`, `pci-devices`: PCI configuration space |
@@ -105,10 +105,10 @@ Each example is one file with a package of its own,
 
 | Category | Examples |
 |---|---|
-| `graphics/` | blit bmpview compiled copper dirty fire flip font gcviz latch lfb lsystem mandel modex paint plasma raycast raytrace scroll sprite stars textfx turtle vesa wire3d |
+| `graphics/` | blit bmpview compiled copper dirty fire flip font gcviz latch lfb lsystem mandel mode12 modex paint palette parallax picview plasma raycast raytrace rotozoom scroll solid3d split sprite stars textfont textfx tiles tunnel turtle vesa wire3d |
 | `system/` | alarm asm asmdsl calc cdrom diskinfo dosinfo fatview floppy intvec ivt joystick keys mcbwalk memmap pciscan ports printer probes serial speed step sysinfo term timer xms |
 | `lisp/` | bench hotfix life live restarts resume shell snake special windows |
-| `sound/` | adlib blaster dmascope modplay record speaker |
+| `sound/` | adlib blaster dmascope midi mixer modplay record speaker spectrum tune |
 | `network/` | browse files irc netpong ntp remote websrv wget |
 
 `data/` holds files the examples read; `support/` holds the host-side
@@ -121,6 +121,12 @@ Some show one hardware technique each:
 | Blitting | `blit` (a back buffer), `dirty` (dirty rectangles), `compiled` (sprites as machine code) |
 | Mode X | `flip` (page flipping), `scroll` (hardware scrolling), `latch` (copies inside video memory) |
 | Other video | `lfb` (the VESA linear framebuffer), `copper` (a palette entry changed on every scanline) |
+| Scrolling worlds | `tiles` (a tile map, only the new column drawn), `parallax` (three layers and sprites, redrawn and flipped), `split` (a status bar by the line-compare register) |
+| Palette and fonts | `palette` (cycling, fades and cross-fades with no pixel redrawn), `textfont` (glyphs redefined in plane 2, 80 by 50) |
+| Planar 16 colours | `mode12` (640x480 through the graphics controller: bit mask, set/reset, write modes, latches, XOR) |
+| Demo-scene effects | `rotozoom`, `tunnel`, `solid3d` (filled, shaded and texture-mapped polygons) |
+| Picture files | `bmpview`, `picview` (PCX and GIF decoders in Lisp) |
+| Sound engines | `mixer` (eight voices mixed in Lisp), `modplay` (ProTracker modules, from a file too), `tune` (AdLib music from the timer interrupt), `midi` (an MPU-401), `spectrum` (an FFT of what is playing) |
 | DMA | `blaster` (playing), `dmascope` (the controller's registers, live), `record`, `modplay` (a MOD player), `floppy` (a sector without the BIOS) |
 | Interrupts and timing | `timer` (the timer chip at 1000 Hz), `alarm` (the real-time clock's interrupt), `keys` (which keys are held down), `term` (a serial terminal, received by interrupt), `step` (single-stepping machine code) |
 | Other hardware and drivers | `joystick` (the game port's timers), `xms` (extended and expanded memory), `cdrom` (MSCDEX, raw sectors, audio tracks), `speed` (the time-stamp counter, and ways to copy memory) |

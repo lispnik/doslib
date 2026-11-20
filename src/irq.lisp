@@ -21,8 +21,8 @@
 ;;;;     ... start something ...
 ;;;;     (loop until (plusp (irq-count hook))))     ; it has finished
 ;;;;
-;;;; A device that hands over a byte with each interrupt -- a serial port, the
-;;;; keyboard -- can have them kept: with :BUFFER and its data port, the
+;;;; A device that hands over a byte with each interrupt -- a serial port --
+;;;; can have them kept: with :BUFFER and its data port, the
 ;;;; handler reads the port and puts the byte in a ring of 256, and
 ;;;; IRQ-READ-BYTE takes them out in the order they came.
 ;;;;

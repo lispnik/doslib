@@ -47,9 +47,11 @@
 
 ;;; ---- macros: instructions that are made of instructions
 (defvar *asm-macros* (make-hash-table))
+
 (defmacro define-asm-macro (name lambda-list &body body)
   "Define NAME as a pseudo-instruction: BODY returns the list of items it stands for."
   `(setf (gethash ',name *asm-macros*) (lambda ,lambda-list ,@body)))
+
 (defun expand (program)
   "PROGRAM with every macro replaced by what it stands for, all the way down."
   (loop for item in program
@@ -60,11 +62,17 @@
 
 (define-asm-macro repeat (register count &rest body)   ; do BODY COUNT times
   (let ((again (gensym "AGAIN")))
-    `((mov ,register ,count) ,again ,@body (dec ,register) (jnz ,again))))
+    `((mov ,register ,count)
+      ,again
+      ,@body
+      (dec ,register)
+      (jnz ,again))))
+
 (define-asm-macro saving (registers &rest body)        ; keep REGISTERS as they were
   `(,@(mapcar (lambda (r) `(push ,r)) registers)
     ,@body
     ,@(mapcar (lambda (r) `(pop ,r)) (reverse registers))))
+
 (define-asm-macro clear (register) `((xor ,register ,register)))
 
 (defun assemble (program)

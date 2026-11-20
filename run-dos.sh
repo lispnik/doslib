@@ -279,7 +279,8 @@ EOF
     # (the running Lisp has read its core into memory, so it can write over the file)
     printf '(sb-ext:enable-debugger)\n(sb-ext:save-lisp-and-die "D:/SBCL/sbcl.core")\n' > "$vm/text.tmp"
     put_text "$vm/text.tmp" MKCORE.LSP; rm -f "$vm/text.tmp"
-    mdel d:/SBCL/BUILD.LOG 2>/dev/null || true
+    # (and the old results, so that a build that dies half way is not taken for a good one)
+    mdel d:/SBCL/BUILD.LOG d:/SBCL/DOSLIB.COR d:/SBCL/EMACS.EXE 2>/dev/null || true
     echo "building doslib on the DOS machine (this takes some minutes)"
     # (with the network card: the packet driver in FDAUTO.BAT waits for one)
     qemu-system-i386 -m 512 -cpu pentium3 -display none -no-reboot -nic user,model=pcnet \

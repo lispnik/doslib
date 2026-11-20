@@ -646,13 +646,17 @@
     (is (null (irq-read-byte hook)))))
 
 (deftest key-state
-  (multiple-value-bind (selector offset) (get-vector 9)
+  (flet ((get-vector (n)                 ; the real-mode vector
+           (multiple-value-bind (ax bx cx dx) (int86 #x31 :ax #x0200 :bx n)
+             (declare (ignore ax bx))
+             (values (logand cx #xFFFF) (logand dx #xFFFF)))))
+   (multiple-value-bind (selector offset) (get-vector #x15)
     (with-key-state
-      (is (not (equal (list selector offset) (multiple-value-list (get-vector 9)))))
+      (is (not (equal (list selector offset) (multiple-value-list (get-vector #x15)))))
       (is (null (key-state-start)))                     ; already on
       (is (not (key-down-p +key-space+)))
       (is (listp (keys-down))))
-    (is= (list selector offset) (multiple-value-list (get-vector 9)))))
+    (is= (list selector offset) (multiple-value-list (get-vector #x15))))))
 
 (deftest real-calls
   ;; a routine that is only a far return gives the registers back as they were
