@@ -87,6 +87,7 @@
                              (:file "pciscan")
                              (:file "ports")
                              (:file "serial")
+                             (:file "speed")
                              (:file "step")
                              (:file "sysinfo")
                              (:file "timer")))

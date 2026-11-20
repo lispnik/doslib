@@ -210,6 +210,9 @@ def all_cases():
         example('modplay', ('see', 'mixing takes'), ('wait', 3)),
         example('floppy', ('see', 'no disk in A:'), leave=None),
         example('timer', ('see', 'Against the clock chip'), ('key', 'spc'), ('wait', 1)),
+        # the clock rate and the chart of copies; any key leaves, and it says which won
+        example('speed', ('see', 'REP MOVSD to the screen'), ('see', 'The copies agree: yes'),
+                ('key', 'spc'), ('see', 'million bytes a second'), leave=None),
         example('blaster-16', ('see', 'DMA channel 5', 150), ('see', 'interrupts handled', 90),
                 example='blaster', args='"16"', leave=None, patience=200),
         # the debugger: run two routines to their ends, a step at a time underneath

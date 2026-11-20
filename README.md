@@ -105,7 +105,7 @@ Each example is one file with a package of its own,
 | Category | Examples |
 |---|---|
 | `graphics/` | blit bmpview compiled copper dirty fire flip font gcviz latch lfb lsystem mandel modex paint plasma raycast raytrace scroll sprite stars textfx turtle vesa wire3d |
-| `system/` | asm asmdsl calc diskinfo dosinfo fatview floppy intvec ivt mcbwalk memmap pciscan ports printer probes serial step sysinfo timer |
+| `system/` | asm asmdsl calc diskinfo dosinfo fatview floppy intvec ivt mcbwalk memmap pciscan ports printer probes serial speed step sysinfo timer |
 | `lisp/` | bench hotfix life live restarts resume shell snake special windows |
 | `sound/` | adlib blaster dmascope modplay record speaker |
 | `network/` | browse files irc netpong ntp remote websrv wget |
