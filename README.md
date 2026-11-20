@@ -4,7 +4,9 @@ Common Lisp on DOS with SBCL: a library for the BIOS, DOS, I/O ports,
 memory and video; example programs that use it; and an Emacs-like editor.
 
 It needs the DOS port of SBCL with ASDF and, for the network examples and
-nothing else, the `sb-bsd-sockets` contrib and a packet driver.
+nothing else, the `sb-bsd-sockets` contrib and a packet driver. The port is
+the `dos-port` branch of <https://github.com/lispnik/sbcl>;
+[Building SBCL for DOS](#building-sbcl-for-dos) below says how to make it.
 
 ## Systems
 
@@ -190,6 +192,55 @@ current directory:
     (insert (format nil "~D-~2,'0D-~2,'0D" year month day))))
 (bind-key "C-c d" 'insert-date)
 ```
+
+## Building SBCL for DOS
+
+The port is a branch of SBCL, not part of this project:
+<https://github.com/lispnik/sbcl>, branch `dos-port`. It makes a 32-bit
+protected-mode `SBCL.EXE` that runs on FreeDOS under the HX extender's DPMI
+host (`HDPMI32.EXE`), with the long-file-name driver DOSLFN loaded, on a
+Pentium Pro or later with a floating-point unit.
+
+DOS cannot host the build. The C runtime is cross-compiled on a Unix
+machine with Open Watcom, and the steps that must run the new Lisp (the
+warm load and saving the core) run on FreeDOS in QEMU. It has been built on
+macOS on Apple silicon; the makefile also names the Open Watcom binaries
+for Intel macOS and for Linux, which have not been tried.
+
+On the build machine, from a package manager: a host SBCL (as any SBCL
+build needs), GNU make, `qemu-system-i386`, `mtools`, `nasm`, `objconv`
+and an `i386-elf-gcc` cross-compiler (used only to assemble one file).
+
+Then a directory of downloads, `sbcl-dos-tools`, beside the SBCL tree
+(or anywhere, named by `SBCL_DOS_TOOLS`):
+
+| In `sbcl-dos-tools/` | What | From |
+|---|---|---|
+| `ow/` | An Open Watcom v2 snapshot (`ow-snapshot.tar.xz`), unpacked | <https://github.com/open-watcom/open-watcom-v2> |
+| `dl-hx/rt/`, `dl-hx/dev/` | The HX runtime and development kits (`HXRT`, `HXDEV`), unpacked | <https://github.com/Baron-von-Riedesel/HX> |
+| `dl-freedos/lite/FD14LITE.img` | The FreeDOS 1.4 "LiteUSB" image | <https://www.freedos.org> |
+| `dl-watt32/src/` | Watt-32, the TCP/IP library (for sockets) | <https://github.com/gvanem/Watt-32> |
+| `dl-pktdrv/crynwr/` | The Crynwr packet drivers (for sockets, when running) | the Crynwr collection |
+| `dl-quicklisp/quicklisp.lisp` | Optional | <https://beta.quicklisp.org/quicklisp.lisp> |
+
+```sh
+git clone -b dos-port https://github.com/lispnik/sbcl sbcl-dos-experiment
+cd sbcl-dos-experiment
+sh tools-for-build/dos-watt32.sh          # the TCP/IP library; skip it to build without sockets
+./make-dos.sh                             # the runtime, then the core: src/runtime/sbcl.exe, output/sbcl.core
+./make-dos-contrib.sh asdf sb-bsd-sockets sb-posix
+```
+
+`make-dos.sh` takes a while: the warm build runs in the emulator. The
+scripts' own comments say more (`make-dos.sh`, `make-dos-contrib.sh`,
+`src/runtime/Makefile.dos`, `tools-for-build/dos-run.sh`). The names here
+are the ones the scripts default to: this project's launcher looks for the
+SBCL tree in `sbcl-dos-experiment` next to `sbcl-dos-tools` unless
+`SBCL_SRC` says otherwise, and for this project inside `sbcl-dos-tools`.
+
+To run the result without this project, put `sbcl.exe`, `hdpmi32.exe` and
+`sbcl.core` in one directory on a FreeDOS disk, with the contribs in a
+`CONTRIB` directory beside them, load DOSLFN, and type `sbcl`.
 
 ## Running it
 
