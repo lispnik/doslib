@@ -40,7 +40,7 @@ load what you want:
 |---|---|
 | `machine.lisp` | `machine-code`, `int86` (software interrupts), `lo`, `hi`, `word16` |
 | `ports.lisp` | `inb`, `outb`, `inw`, `outw`, `inl`, `outl`, `cmos` |
-| `dos.lisp` | `real-int` (real-mode interrupts through DPMI), `dos-alloc`, `dos-free`, `dos-scratch`, `dos-string`, `linear`, `without-break-checking` (Ctrl-C as a key), `catching-interrupt` (Ctrl-Break) |
+| `dos.lisp` | `real-int`, `real-call` (real-mode interrupts and routines through DPMI), `dos-alloc`, `dos-free`, `dos-scratch`, `dos-string`, `linear`, `without-break-checking` (Ctrl-C as a key), `catching-interrupt` (Ctrl-Break) |
 | `cpuid.lisp` | `cpuid` |
 | `memory.lisp` | `peek`, `peek16`, `peek32`; `map-physical`, `unmap-physical`, `with-physical-memory`: a device's memory made addressable |
 | `interrupts.lisp` | `get-vector`, `set-vector`, `code-selector`, `data-selector` |
@@ -55,7 +55,8 @@ load what you want:
 | `sound.lisp` | `speaker-on`, `speaker-off`, `speaker-beep`: the PC speaker |
 | `mouse.lisp` | `mouse-init`, `mouse-position`, `mouse-cell`, `mouse-pixel`, `mouse-show`, `mouse-hide`: the mouse driver |
 | `disk.lisp` | `dos-read-sectors`, `bios-read-sectors`: disks, a sector at a time |
-| `irq.lisp` | `with-irq-handler`, `install-irq-handler`, `irq-count`: handlers for hardware interrupts, made to order |
+| `irq.lisp` | `with-irq-handler`, `install-irq-handler`, `irq-count`, `irq-read-byte`: handlers for hardware interrupts, made to order |
+| `keystate.lisp` | `with-key-state`, `key-down-p`, `keys-down`: which keys are held down, from the keyboard's interrupt |
 | `dma.lisp` | `dma-start`, `dma-stop`, `dma-address`, `dma-count`, `with-dma-memory`: the DMA controllers |
 | `blaster.lisp` | `blaster-present-p`, `blaster-write`, `blaster-read`, `blaster-version`, `with-blaster-interrupt`, `blaster-interrupts`: the Sound Blaster's settings, its processor and its interrupt |
 | `pci.lisp` | `pci-read`, `pci-write`, `pci-devices`: PCI configuration space |
@@ -105,7 +106,7 @@ Each example is one file with a package of its own,
 | Category | Examples |
 |---|---|
 | `graphics/` | blit bmpview compiled copper dirty fire flip font gcviz latch lfb lsystem mandel modex paint plasma raycast raytrace scroll sprite stars textfx turtle vesa wire3d |
-| `system/` | asm asmdsl calc diskinfo dosinfo fatview floppy intvec ivt mcbwalk memmap pciscan ports printer probes serial speed step sysinfo timer |
+| `system/` | alarm asm asmdsl calc cdrom diskinfo dosinfo fatview floppy intvec ivt joystick keys mcbwalk memmap pciscan ports printer probes serial speed step sysinfo term timer xms |
 | `lisp/` | bench hotfix life live restarts resume shell snake special windows |
 | `sound/` | adlib blaster dmascope modplay record speaker |
 | `network/` | browse files irc netpong ntp remote websrv wget |
@@ -121,7 +122,8 @@ Some show one hardware technique each:
 | Mode X | `flip` (page flipping), `scroll` (hardware scrolling), `latch` (copies inside video memory) |
 | Other video | `lfb` (the VESA linear framebuffer), `copper` (a palette entry changed on every scanline) |
 | DMA | `blaster` (playing), `dmascope` (the controller's registers, live), `record`, `modplay` (a MOD player), `floppy` (a sector without the BIOS) |
-| Interrupts and timing | `timer` (the timer chip at 1000 Hz), `step` (single-stepping machine code) |
+| Interrupts and timing | `timer` (the timer chip at 1000 Hz), `alarm` (the real-time clock's interrupt), `keys` (which keys are held down), `term` (a serial terminal, received by interrupt), `step` (single-stepping machine code) |
+| Other hardware and drivers | `joystick` (the game port's timers), `xms` (extended and expanded memory), `cdrom` (MSCDEX, raw sectors, audio tracks), `speed` (the time-stamp counter, and ways to copy memory) |
 
 `blaster`, `dmascope`, `record` and `modplay` want a Sound Blaster (the launcher's QEMU machine has an
 `sb16`); `sprite`, `paint` and `windows` want a mouse driver.

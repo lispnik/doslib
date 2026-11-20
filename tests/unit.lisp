@@ -632,3 +632,31 @@
     (let ((before (ticks)))
       (loop until (>= (irq-count hook) 16))
       (is (<= 3 (- (ticks) before) 5)))))
+
+(deftest irq-buffers
+  ;; :buffer adds a read of the port and a store into the ring at memory + 16
+  (let ((bytes (irq-handler-bytes 4 #x1000 :buffer #x3F8)))
+    (is (search '(#xBA #xF8 #x03 0 0 #xEC) bytes))
+    (is (search '(#x88 #x82 #x10 #x10 0 0) bytes)))
+  ;; writes come before reads: an index register, then its data
+  (let ((bytes (irq-handler-bytes 8 #x1000 :write-ports '((#x70 #x0C)) :read-ports '(#x71))))
+    (is (< (search '(#xBA #x70 0 0 0) bytes) (search '(#xBA #x71 0 0 0) bytes))))
+  ;; nothing waiting on a quiet line
+  (with-irq-handler (hook 3 :buffer #x2F8 :unmask nil)
+    (is (null (irq-read-byte hook)))))
+
+(deftest key-state
+  (multiple-value-bind (selector offset) (get-vector 9)
+    (with-key-state
+      (is (not (equal (list selector offset) (multiple-value-list (get-vector 9)))))
+      (is (null (key-state-start)))                     ; already on
+      (is (not (key-down-p +key-space+)))
+      (is (listp (keys-down))))
+    (is= (list selector offset) (multiple-value-list (get-vector 9)))))
+
+(deftest real-calls
+  ;; a routine that is only a far return gives the registers back as they were
+  (with-dos-memory (segment 16)
+    (setf (sb-sys:sap-ref-8 (sb-sys:int-sap (linear segment)) 0) #xCB)
+    (multiple-value-bind (ax bx cx dx) (real-call segment 0 :ax #x1234 :bx 2 :cx 3 :dx #xFFFF)
+      (is= '(#x1234 2 3 #xFFFF) (list ax bx cx dx)))))

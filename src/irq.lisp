@@ -21,6 +21,11 @@
 ;;;;     ... start something ...
 ;;;;     (loop until (plusp (irq-count hook))))     ; it has finished
 ;;;;
+;;;; A device that hands over a byte with each interrupt -- a serial port, the
+;;;; keyboard -- can have them kept: with :BUFFER and its data port, the
+;;;; handler reads the port and puts the byte in a ring of 256, and
+;;;; IRQ-READ-BYTE takes them out in the order they came.
+;;;;
 ;;;; Passing the interrupt on (:CHAIN) is for interrupts that others need
 ;;;; too: the timer, above all.  :CHAIN T passes on every one.  :CHAIN with
 ;;;; a number is for a timer made to run fast (see examples/system/timer.lisp):
@@ -33,12 +38,13 @@
 
 (in-package #:doslib)
 
-;;; A hook's twelve bytes of memory outside the Lisp heap: the count (4),
-;;; the 16-bit sum for :CHAIN n (at 4), and the previous handler as a far
-;;; jump through memory wants it (offset at 6, selector at 10).
+;;; A hook's memory outside the Lisp heap: the count (4 bytes), the 16-bit
+;;; sum for :CHAIN n (at 4), the previous handler as a far jump through
+;;; memory wants it (offset at 6, selector at 10), and for :BUFFER where the
+;;; next byte goes (one byte, at 12) in the ring of 256 that starts at 16.
 (defstruct (irq-hook (:constructor %make-irq-hook))
   "A handler made by INSTALL-IRQ-HANDLER: what it is on, and what was there before."
-  irq memory code chain unmask installed old-selector old-offset old-mask)
+  irq memory code chain unmask installed old-selector old-offset old-mask (tail 0))
 
 (defvar *irq-hooks* (make-hash-table :test #'equal)
   "Description -> hook: a handler asked for again is the same one, not made again.")
@@ -47,9 +53,10 @@
   "The interrupt vector of hardware interrupt request IRQ (0 to 15)."
   (if (< irq 8) (+ 8 irq) (+ #x70 (- irq 8))))
 
-(defun irq-handler-bytes (irq memory &key read-ports write-ports chain)
-  "The machine code of a handler for IRQ, as a list of bytes: read each of
-READ-PORTS, write each (port value) of WRITE-PORTS, add one to the four
+(defun irq-handler-bytes (irq memory &key read-ports write-ports buffer chain)
+  "The machine code of a handler for IRQ, as a list of bytes: write each
+(port value) of WRITE-PORTS, read each of READ-PORTS, read port BUFFER if
+given and put the byte in the ring at MEMORY + 16, add one to the four
 bytes at MEMORY, and then either tell the interrupt controller and return,
 or (CHAIN, as INSTALL-IRQ-HANDLER describes it) jump to the handler whose
 address is at MEMORY + 6."
@@ -59,10 +66,15 @@ address is at MEMORY + 6."
         (pass-on `(#x2E #xFF #x2D ,@(bytes32 (+ memory 6)))))           ; jmp far cs:[old handler]
     `(#x50 #x52 #x1E                                    ; push eax / push edx / push ds
       #x66 #xB8 ,(lo ds) ,(hi ds) #x8E #xD8             ; mov ax, our data selector / mov ds, ax
+      ,@(loop for (port value) in write-ports
+              append `(#xBA ,@(bytes32 port) #xB0 ,value #xEE))         ; mov edx, port / mov al, value / out dx, al
       ,@(loop for port in read-ports
               append `(#xBA ,@(bytes32 port) #xEC))     ; mov edx, port / in al, dx
-      ,@(loop for (port value) in write-ports
-              append `(#xBA ,@(bytes32 port) #xB0 ,value #xEE))         ; ... / mov al, value / out dx, al
+      ,@(when buffer
+          `(#xBA ,@(bytes32 buffer) #xEC                ; mov edx, port / in al, dx
+            #x0F #xB6 #x15 ,@(bytes32 (+ memory 12))    ; movzx edx, byte [where the next goes]
+            #x88 #x82 ,@(bytes32 (+ memory 16))         ; mov [ring + edx], al
+            #xFE #x05 ,@(bytes32 (+ memory 12))))       ; inc byte [where the next goes]
       #xFF #x05 ,@(bytes32 memory)                      ; inc dword [count]
       ,@(cond ((null chain) `(,@done ,@leave #xCF))     ; ... / iretd
               ((eq chain t) `(,@leave ,@pass-on))
@@ -71,18 +83,20 @@ address is at MEMORY + 6."
                    ,@done ,@leave #xCF
                    ,@leave ,@pass-on))))))
 
-(defun install-irq-handler (irq &key read-ports write-ports chain (unmask (not chain)))
-  "Put a handler on hardware interrupt request IRQ (0 to 15) that reads each
-of READ-PORTS and writes each (port value) of WRITE-PORTS -- whatever tells
-the device it has been heard -- and counts.  Without CHAIN it then tells the
+(defun install-irq-handler (irq &key read-ports write-ports buffer chain (unmask (not chain)))
+  "Put a handler on hardware interrupt request IRQ (0 to 15) that writes
+each (port value) of WRITE-PORTS and then reads each of READ-PORTS --
+whatever tells the device it has been heard -- and counts.  With BUFFER, a
+port, it also reads that port and keeps the byte for IRQ-READ-BYTE (the
+last 256 of them).  Without CHAIN it then tells the
 interrupt controller the interrupt is done; with CHAIN true it passes every
 interrupt on to the handler that was there before, and with CHAIN a number
 only when a 16-bit sum of that number overflows.  With UNMASK (the default
 unless chaining) the interrupt controller is told to let the interrupt
 through.  Returns a hook, for IRQ-COUNT and REMOVE-IRQ-HANDLER."
-  (let* ((key (list irq read-ports write-ports chain))
+  (let* ((key (list irq read-ports write-ports buffer chain))
          (hook (or (gethash key *irq-hooks*)
-                   (let ((memory (alien-sap (make-alien (unsigned 8) 12))))
+                   (let ((memory (alien-sap (make-alien (unsigned 8) 272))))
                      (setf (gethash key *irq-hooks*)
                            (%make-irq-hook
                             :irq irq :memory memory :chain chain
@@ -90,6 +104,7 @@ through.  Returns a hook, for IRQ-COUNT and REMOVE-IRQ-HANDLER."
                                          (irq-handler-bytes irq (sap-int memory)
                                                             :read-ports read-ports
                                                             :write-ports write-ports
+                                                            :buffer buffer
                                                             :chain chain)))))))
          (memory (irq-hook-memory hook))
          (port (if (< irq 8) #x21 #xA1)) (bit (ash 1 (logand irq 7))))
@@ -99,6 +114,7 @@ through.  Returns a hook, for IRQ-COUNT and REMOVE-IRQ-HANDLER."
       (setf (irq-hook-old-selector hook) selector (irq-hook-old-offset hook) offset
             (irq-hook-old-mask hook) (inb port) (irq-hook-unmask hook) unmask
             (sap-ref-32 memory 0) 0 (sap-ref-16 memory 4) 0
+            (sap-ref-8 memory 12) 0 (irq-hook-tail hook) 0
             (sap-ref-32 memory 6) offset (sap-ref-16 memory 10) selector))
     (set-vector (irq-vector irq) (code-selector) (sap-int (irq-hook-code hook)))
     (when unmask (outb port (logandc2 (inb port) bit)))
@@ -127,6 +143,14 @@ vector go back to what they were when it was installed."
 (defun (setf irq-count) (count hook)
   "Set the number of interrupts HOOK's handler has counted."
   (setf (sap-ref-32 (irq-hook-memory hook) 0) count))
+
+(defun irq-read-byte (hook)
+  "The next byte the handler of HOOK (installed with :BUFFER) has kept, or
+NIL when there is none waiting.  More than 255 left unread are lost."
+  (let ((tail (irq-hook-tail hook)) (memory (irq-hook-memory hook)))
+    (unless (= tail (sap-ref-8 memory 12))
+      (setf (irq-hook-tail hook) (logand (1+ tail) 255))
+      (sap-ref-8 memory (+ 16 tail)))))
 
 (defmacro with-irq-handler ((hook irq &rest options) &body body)
   "Run BODY with a handler on hardware interrupt request IRQ, made as

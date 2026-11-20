@@ -89,6 +89,9 @@ The DPMI real-mode call structure REAL-INT passes the registers in.
 **`real-int`** `n &key (ax 0) (bx 0) (cx 0) (dx 0) (si 0) (di 0) (es 0) (ds 0)` — Function  
 Real-mode interrupt N.  Returns AX BX CX DX ES DS FLAGS (16-bit values).
 
+**`real-call`** `segment offset &key (ax 0) (bx 0) (cx 0) (dx 0) (si 0) (di 0) (es 0) (ds 0)` — Function  
+Call the real-mode routine at SEGMENT:OFFSET, which returns with a far return.  Returns AX BX CX DX ES DS FLAGS (16-bit values), as REAL-INT does.
+
 **`dos-alloc`** `bytes` — Function  
 Memory below 1MB, which real-mode code (BIOS, DOS) can reach.  Returns its segment.  It belongs to this process: a saved core does not keep it.
 
@@ -490,11 +493,11 @@ A handler made by INSTALL-IRQ-HANDLER: what it is on, and what was there before.
 **`irq-vector`** `irq` — Function  
 The interrupt vector of hardware interrupt request IRQ (0 to 15).
 
-**`irq-handler-bytes`** `irq memory &key read-ports write-ports chain` — Function  
-The machine code of a handler for IRQ, as a list of bytes: read each of READ-PORTS, write each (port value) of WRITE-PORTS, add one to the four bytes at MEMORY, and then either tell the interrupt controller and return, or (CHAIN, as INSTALL-IRQ-HANDLER describes it) jump to the handler whose address is at MEMORY + 6.
+**`irq-handler-bytes`** `irq memory &key read-ports write-ports buffer chain` — Function  
+The machine code of a handler for IRQ, as a list of bytes: write each (port value) of WRITE-PORTS, read each of READ-PORTS, read port BUFFER if given and put the byte in the ring at MEMORY + 16, add one to the four bytes at MEMORY, and then either tell the interrupt controller and return, or (CHAIN, as INSTALL-IRQ-HANDLER describes it) jump to the handler whose address is at MEMORY + 6.
 
-**`install-irq-handler`** `irq &key read-ports write-ports chain (unmask (not chain))` — Function  
-Put a handler on hardware interrupt request IRQ (0 to 15) that reads each of READ-PORTS and writes each (port value) of WRITE-PORTS -- whatever tells the device it has been heard -- and counts.  Without CHAIN it then tells the interrupt controller the interrupt is done; with CHAIN true it passes every interrupt on to the handler that was there before, and with CHAIN a number only when a 16-bit sum of that number overflows.  With UNMASK (the default unless chaining) the interrupt controller is told to let the interrupt through.  Returns a hook, for IRQ-COUNT and REMOVE-IRQ-HANDLER.
+**`install-irq-handler`** `irq &key read-ports write-ports buffer chain (unmask (not chain))` — Function  
+Put a handler on hardware interrupt request IRQ (0 to 15) that writes each (port value) of WRITE-PORTS and then reads each of READ-PORTS -- whatever tells the device it has been heard -- and counts.  With BUFFER, a port, it also reads that port and keeps the byte for IRQ-READ-BYTE (the last 256 of them).  Without CHAIN it then tells the interrupt controller the interrupt is done; with CHAIN true it passes every interrupt on to the handler that was there before, and with CHAIN a number only when a 16-bit sum of that number overflows.  With UNMASK (the default unless chaining) the interrupt controller is told to let the interrupt through.  Returns a hook, for IRQ-COUNT and REMOVE-IRQ-HANDLER.
 
 **`remove-irq-handler`** `hook` — Function  
 Take HOOK's handler out: the interrupt controller's mask bit and the vector go back to what they were when it was installed.
@@ -508,8 +511,64 @@ How many interrupts HOOK's handler has seen since it was installed.  SETF it to 
 **`(setf irq-count)`** `count hook` — Function  
 Set the number of interrupts HOOK's handler has counted.
 
+**`irq-read-byte`** `hook` — Function  
+The next byte the handler of HOOK (installed with :BUFFER) has kept, or NIL when there is none waiting.  More than 255 left unread are lost.
+
 **`with-irq-handler`** `(hook irq &rest options) &body body` — Macro  
 Run BODY with a handler on hardware interrupt request IRQ, made as INSTALL-IRQ-HANDLER makes it from OPTIONS, and HOOK bound to its hook: (irq-count hook) is the number of interrupts so far.  The handler is taken out again however BODY ends.
+
+### `src/keystate.lisp`: Which keys are held down.
+
+**`+key-escape+`** — Constant  
+The scan code of Esc.
+
+**`+key-enter+`** — Constant  
+The scan code of Enter.
+
+**`+key-control+`** — Constant  
+The scan code of (left) Ctrl.
+
+**`+key-left-shift+`** — Constant  
+The scan code of the left Shift key.
+
+**`+key-right-shift+`** — Constant  
+The scan code of the right Shift key.
+
+**`+key-alt+`** — Constant  
+The scan code of (left) Alt.
+
+**`+key-space+`** — Constant  
+The scan code of the space bar.
+
+**`+key-up+`** — Constant  
+The scan code of the up arrow (and 8 on the number pad).
+
+**`+key-left+`** — Constant  
+The scan code of the left arrow (and 4 on the number pad).
+
+**`+key-right+`** — Constant  
+The scan code of the right arrow (and 6 on the number pad).
+
+**`+key-down+`** — Constant  
+The scan code of the down arrow (and 2 on the number pad).
+
+**`key-state-start`** `` — Function  
+Begin keeping track of which keys are held down.  Returns true, or NIL if it was already being done.
+
+**`key-state-stop`** `` — Function  
+Stop keeping track of the keys, and empty the BIOS's keyboard buffer.
+
+**`poll-key-state`** `` — Function  
+Take in the scan codes that have arrived since last time.  KEY-DOWN-P and KEYS-DOWN do this themselves.  Returns the number of presses and releases seen since KEY-STATE-START.
+
+**`key-down-p`** `scan-code` — Function  
+Is the key with SCAN-CODE (1 to 127: +KEY-LEFT+, +KEY-SPACE+ ...) held down now?  Inside WITH-KEY-STATE only.  The keys the AT keyboard added answer to the same codes as the ones they copy: either Ctrl is 29.
+
+**`keys-down`** `` — Function  
+The scan codes of all the keys held down now, in order.
+
+**`with-key-state`** `&body body` — Macro  
+Run BODY with the keyboard's presses and releases tracked, so that KEY-DOWN-P and KEYS-DOWN work; the keyboard interrupt is put back however BODY ends.
 
 ### `src/blaster.lisp`: The Sound Blaster: where the card is, its processor (the "DSP"), and
 

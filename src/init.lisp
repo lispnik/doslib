@@ -32,7 +32,7 @@ with its own :TOPLEVEL function calls it first."
   (setf *scratch* nil)
   (clrhash *drive-methods*)
   (setf *timer-count* 0 *last-frame* 0) ; midnight may have passed, or the machine restarted
-  (setf *blaster-hook* nil)
+  (setf *blaster-hook* nil *key-hook* nil)
   (clrhash *irq-hooks*)                 ; the handlers were the old process's memory
   (setf *hotkey-segment* nil)
   (setf *hotkey-old-vector* nil)        ; a new process: nothing is hooked

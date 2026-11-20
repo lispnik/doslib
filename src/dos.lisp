@@ -20,6 +20,23 @@
   (values (sap-ref-16 *rm* #x1C) (sap-ref-16 *rm* #x10) (sap-ref-16 *rm* #x18)
           (sap-ref-16 *rm* #x14) (sap-ref-16 *rm* #x22) (sap-ref-16 *rm* #x24)
           (sap-ref-16 *rm* #x20)))
+;;; Some services are not interrupts but routines to call: the extended
+;;; memory manager, a mouse driver's handler.  DPMI function 0301h calls a
+;;; real-mode routine that returns with RETF.
+(defun real-call (segment offset &key (ax 0) (bx 0) (cx 0) (dx 0) (si 0) (di 0) (es 0) (ds 0))
+  "Call the real-mode routine at SEGMENT:OFFSET, which returns with a far
+return.  Returns AX BX CX DX ES DS FLAGS (16-bit values), as REAL-INT does."
+  (dotimes (i 64) (setf (sap-ref-8 *rm* i) 0))
+  (setf (sap-ref-32 *rm* #x1C) ax (sap-ref-32 *rm* #x10) bx
+        (sap-ref-32 *rm* #x18) cx (sap-ref-32 *rm* #x14) dx
+        (sap-ref-32 *rm* 4) si (sap-ref-32 *rm* 0) di
+        (sap-ref-16 *rm* #x22) es (sap-ref-16 *rm* #x24) ds
+        (sap-ref-16 *rm* #x2A) offset (sap-ref-16 *rm* #x2C) segment)
+  (int86 #x31 :ax #x0301 :bx 0 :cx 0 :di (sap-int *rm*))
+  (values (sap-ref-16 *rm* #x1C) (sap-ref-16 *rm* #x10) (sap-ref-16 *rm* #x18)
+          (sap-ref-16 *rm* #x14) (sap-ref-16 *rm* #x22) (sap-ref-16 *rm* #x24)
+          (sap-ref-16 *rm* #x20)))
+
 (defvar *dos-blocks* (make-hash-table) "Segment -> the selector DPMI gave it, for DOS-FREE.")
 (defun dos-alloc (bytes)
   "Memory below 1MB, which real-mode code (BIOS, DOS) can reach.  Returns its

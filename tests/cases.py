@@ -215,6 +215,18 @@ def all_cases():
                 ('key', 'spc'), ('see', 'million bytes a second'), leave=None),
         example('blaster-16', ('see', 'DMA channel 5', 150), ('see', 'interrupts handled', 90),
                 example='blaster', args='"16"', leave=None, patience=200),
+        # the real-time clock on interrupt request 8: its periodic rate, then its alarm
+        text('alarm', 'interrupts in', 'The alarm rang'),
+        # the keyboard's interrupt: a key pressed is seen, by name
+        example('keys', ('see', 'Most at once'), ('key', 'a'), ('see', 'Last key: A (scan code 30)')),
+        # a terminal on COM1: the host clears the screen, writes at 5,10 and asks where the cursor is
+        example('term', ('see', 'F10 leaves'),
+                ('host', chat('serial', [('\x1b[2J\x1b[5;10HHello from the host\x1b[6n', '\x1b[5;29R')])),
+                ('see', 'Hello from the host'), leave=('f10',)),
+        text('xms', 'every byte right', 'EMS'),
+        # hardware the test machine does not have: each says so
+        text('joystick', 'No joystick'),
+        text('cdrom', 'No CD-ROM'),
         # the debugger: run two routines to their ends, a step at a time underneath
         example('step', ('see', 'gcd:'), ('key', 'spc', 'spc'), ('see', '2 instructions done'),
                 ('key', 'r'), ('see', 'EAX is 21'), ('key', 'n', 'n'), ('see', 'fact:'),

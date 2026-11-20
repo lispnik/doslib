@@ -60,7 +60,12 @@ ALIEN-FUNCALL.")
           #:blaster-read #:blaster-version #:blaster-interrupts #:with-blaster-interrupt
           ;; hardware interrupts
           #:install-irq-handler #:remove-irq-handler #:remove-irq-handlers #:with-irq-handler
-          #:irq-count #:irq-vector #:irq-handler-bytes #:irq-hook
+          #:irq-count #:irq-read-byte #:real-call
+          #:with-key-state #:key-state-start #:key-state-stop #:poll-key-state #:key-down-p
+          #:keys-down #:+key-escape+ #:+key-enter+ #:+key-control+ #:+key-left-shift+
+          #:+key-right-shift+ #:+key-alt+ #:+key-space+ #:+key-up+ #:+key-left+ #:+key-right+
+          #:+key-down+
+          #:irq-vector #:irq-handler-bytes #:irq-hook
           ;; PCI
           #:pci-read #:pci-write #:pci-byte #:pci-word #:pci-present-p #:pci-devices
           ;; serial ports
