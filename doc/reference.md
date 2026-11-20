@@ -482,6 +482,35 @@ The first address at or after ADDRESS where LENGTH bytes (65536 at most) lie wit
 **`with-dma-memory`** `(address length) &body body` — Macro  
 Run BODY with ADDRESS bound to the address of LENGTH bytes of DOS memory that a DMA channel can be pointed at, freed afterwards.
 
+### `src/irq.lisp`: Handlers for hardware interrupts, built to order.
+
+**`irq-hook`** — Structure  
+A handler made by INSTALL-IRQ-HANDLER: what it is on, and what was there before.
+
+**`irq-vector`** `irq` — Function  
+The interrupt vector of hardware interrupt request IRQ (0 to 15).
+
+**`irq-handler-bytes`** `irq memory &key read-ports write-ports chain` — Function  
+The machine code of a handler for IRQ, as a list of bytes: read each of READ-PORTS, write each (port value) of WRITE-PORTS, add one to the four bytes at MEMORY, and then either tell the interrupt controller and return, or (CHAIN, as INSTALL-IRQ-HANDLER describes it) jump to the handler whose address is at MEMORY + 6.
+
+**`install-irq-handler`** `irq &key read-ports write-ports chain (unmask (not chain))` — Function  
+Put a handler on hardware interrupt request IRQ (0 to 15) that reads each of READ-PORTS and writes each (port value) of WRITE-PORTS -- whatever tells the device it has been heard -- and counts.  Without CHAIN it then tells the interrupt controller the interrupt is done; with CHAIN true it passes every interrupt on to the handler that was there before, and with CHAIN a number only when a 16-bit sum of that number overflows.  With UNMASK (the default unless chaining) the interrupt controller is told to let the interrupt through.  Returns a hook, for IRQ-COUNT and REMOVE-IRQ-HANDLER.
+
+**`remove-irq-handler`** `hook` — Function  
+Take HOOK's handler out: the interrupt controller's mask bit and the vector go back to what they were when it was installed.
+
+**`remove-irq-handlers`** `` — Function  
+Take out every handler INSTALL-IRQ-HANDLER has put in: done when Lisp exits.
+
+**`irq-count`** `hook` — Function  
+How many interrupts HOOK's handler has seen since it was installed.  SETF it to start again.
+
+**`(setf irq-count)`** `count hook` — Function  
+Set the number of interrupts HOOK's handler has counted.
+
+**`with-irq-handler`** `(hook irq &rest options) &body body` — Macro  
+Run BODY with a handler on hardware interrupt request IRQ, made as INSTALL-IRQ-HANDLER makes it from OPTIONS, and HOOK bound to its hook: (irq-count hook) is the number of interrupts so far.  The handler is taken out again however BODY ends.
+
 ### `src/blaster.lisp`: The Sound Blaster: where the card is, its processor (the "DSP"), and
 
 **`*blaster-port*`** — Variable  

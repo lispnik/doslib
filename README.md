@@ -55,6 +55,7 @@ load what you want:
 | `sound.lisp` | `speaker-on`, `speaker-off`, `speaker-beep`: the PC speaker |
 | `mouse.lisp` | `mouse-init`, `mouse-position`, `mouse-cell`, `mouse-pixel`, `mouse-show`, `mouse-hide`: the mouse driver |
 | `disk.lisp` | `dos-read-sectors`, `bios-read-sectors`: disks, a sector at a time |
+| `irq.lisp` | `with-irq-handler`, `install-irq-handler`, `irq-count`: handlers for hardware interrupts, made to order |
 | `dma.lisp` | `dma-start`, `dma-stop`, `dma-address`, `dma-count`, `with-dma-memory`: the DMA controllers |
 | `blaster.lisp` | `blaster-present-p`, `blaster-write`, `blaster-read`, `blaster-version`, `with-blaster-interrupt`, `blaster-interrupts`: the Sound Blaster's settings, its processor and its interrupt |
 | `pci.lisp` | `pci-read`, `pci-write`, `pci-devices`: PCI configuration space |

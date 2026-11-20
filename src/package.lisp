@@ -58,6 +58,9 @@ ALIEN-FUNCALL.")
           #:*blaster-port* #:*blaster-irq* #:*blaster-dma* #:*blaster-dma16*
           #:blaster-settings #:blaster-present-p #:blaster-reset #:blaster-write
           #:blaster-read #:blaster-version #:blaster-interrupts #:with-blaster-interrupt
+          ;; hardware interrupts
+          #:install-irq-handler #:remove-irq-handler #:remove-irq-handlers #:with-irq-handler
+          #:irq-count #:irq-vector #:irq-handler-bytes #:irq-hook
           ;; PCI
           #:pci-read #:pci-write #:pci-byte #:pci-word #:pci-present-p #:pci-devices
           ;; serial ports

@@ -30,6 +30,7 @@
                (:file "mouse")
                (:file "disk")
                (:file "dma")
+               (:file "irq")
                (:file "blaster")
                (:file "pci")
                (:file "serial")

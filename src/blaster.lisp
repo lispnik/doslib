@@ -90,50 +90,21 @@ Blaster 16."
   (blaster-settings)
   (and (<= 0 *blaster-dma* 3) (/= *blaster-dma* 2) (<= 2 *blaster-irq* 7) (blaster-reset)))
 
-;;; ---- the interrupt.  The counter and the handler are in the process's
-;;; memory, not the Lisp image's: DOSLIB-INIT forgets them, and they are
-;;; made again when next wanted.
-(defvar *blaster-counter* nil "Four bytes the handler counts interrupts in.")
-(defvar *blaster-handler* nil "(port . code): the handler, made for the card at that port.")
-(defun blaster-handler ()
-  "The address of the interrupt handler: acknowledge, count, return."
-  (unless *blaster-counter*
-    (setf *blaster-counter* (alien-sap (make-alien (unsigned 32) 1))))
-  (unless (eql (car *blaster-handler*) *blaster-port*)
-    (let ((ds (data-selector)) (acknowledge (+ *blaster-port* #xE)))
-      (setf *blaster-handler*
-            (cons *blaster-port*
-                  (apply #'machine-code
-                         `(#x50 #x52 #x1E                   ; push eax / push edx / push ds
-                           #x66 #xB8 ,(lo ds) ,(hi ds)      ; mov ax, our data selector
-                           #x8E #xD8                        ; mov ds, ax
-                           #xBA ,(lo acknowledge) ,(hi acknowledge) 0 0   ; mov edx, port+0Eh
-                           #xEC                             ; in al, dx     the card: seen
-                           #x42 #xEC                        ; inc edx / in al, dx   (16-bit: 2xFh)
-                           #xFF #x05 ,@(bytes32 (sap-int *blaster-counter*))
-                                                            ; inc dword [counter]
-                           #xB0 #x20 #xE6 #x20              ; mov al,20h / out 20h,al
-                                                            ;   the interrupt controller: done
-                           #x1F #x5A #x58 #xCF))))))        ; pop ds / pop edx / pop eax / iretd
-  (sap-int (cdr *blaster-handler*)))
+;;; ---- the interrupt: a handler from irq.lisp that reads the card's two
+;;; acknowledge ports (2xEh for 8-bit sound, 2xFh for 16-bit) and counts.
+(defvar *blaster-hook* nil "The card's interrupt handler, while WITH-BLASTER-INTERRUPT is running.")
 (defun blaster-interrupts ()
   "How many times the card has interrupted since WITH-BLASTER-INTERRUPT
 began: once for each block of samples played or recorded."
-  (if *blaster-counter* (sap-ref-32 *blaster-counter* 0) 0))
+  (if *blaster-hook* (irq-count *blaster-hook*) 0))
 
 (defun call-with-blaster-interrupt (function)
-  (let ((vector (+ 8 *blaster-irq*)) (bit (ash 1 *blaster-irq*))
-        (handler (blaster-handler))
-        (old-mask (inb #x21)))
-    (setf (sap-ref-32 *blaster-counter* 0) 0)
-    (multiple-value-bind (old-selector old-offset) (get-vector vector)
-      (unwind-protect
-           (progn (set-vector vector (code-selector) handler)
-                  (outb #x21 (logandc2 old-mask bit))   ; let the interrupt through
-                  (funcall function))
-        (outb #x21 (logior (logandc2 (inb #x21) bit) (logand old-mask bit)))  ; the bit as it was
-        (set-vector vector old-selector old-offset)
-        (blaster-reset)))))
+  (let ((hook (install-irq-handler *blaster-irq*
+                                   :read-ports (list (+ *blaster-port* #xE) (+ *blaster-port* #xF)))))
+    (setf *blaster-hook* hook)
+    (unwind-protect (funcall function)
+      (remove-irq-handler hook)
+      (blaster-reset))))
 (defmacro with-blaster-interrupt (() &body body)
   "Run BODY with the card's interrupts counted: BLASTER-INTERRUPTS, which
 starts at 0, says how many there have been.  A handler in machine code is

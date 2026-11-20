@@ -605,3 +605,30 @@
       (is= (list selector offset) (multiple-value-list (get-vector vector)))))
   ;; a second time, the count starts again
   (with-blaster-interrupt () (is= 0 (blaster-interrupts))))
+
+(deftest irq-handlers
+  (is= 8 (irq-vector 0))
+  (is= #x0D (irq-vector 5))
+  (is= #x76 (irq-vector 14))
+  ;; the code ends by returning, or by jumping on to the old handler
+  (is= #xCF (car (last (irq-handler-bytes 5 #x1000))))
+  (is= '(#x2E #xFF #x2D #x06 #x10 0 0) (last (irq-handler-bytes 0 #x1000 :chain t) 7))
+  (is (member #xA0 (irq-handler-bytes 12 #x1000)))      ; the second controller is told too
+  ;; on the timer, passing every interrupt on: we count, and the BIOS still does
+  (multiple-value-bind (selector offset) (get-vector 8)
+    (let ((mask (inb #x21)))
+      (with-irq-handler (hook 0 :chain t)
+        (is (handler-case (progn (install-irq-handler 0 :chain t) nil) (error () t)))   ; not twice
+        (let ((before (ticks)))
+          (wait-tick 6)
+          (is (<= 5 (irq-count hook) 8))
+          (is (<= 6 (- (ticks) before) 7)))
+        (setf (irq-count hook) 0)
+        (is (<= 0 (irq-count hook) 1)))
+      (is= mask (inb #x21))
+      (is= (list selector offset) (multiple-value-list (get-vector 8)))))
+  ;; with a number, only when the sum of it overflows: here, every fourth one
+  (with-irq-handler (hook 0 :chain #x4000 :unmask nil)
+    (let ((before (ticks)))
+      (loop until (>= (irq-count hook) 16))
+      (is (<= 3 (- (ticks) before) 5)))))

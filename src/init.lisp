@@ -32,13 +32,15 @@ with its own :TOPLEVEL function calls it first."
   (setf *scratch* nil)
   (clrhash *drive-methods*)
   (setf *timer-count* 0 *last-frame* 0) ; midnight may have passed, or the machine restarted
-  (setf *blaster-counter* nil *blaster-handler* nil)    ; they were the old process's memory
+  (setf *blaster-hook* nil)
+  (clrhash *irq-hooks*)                 ; the handlers were the old process's memory
   (setf *hotkey-segment* nil)
   (setf *hotkey-old-vector* nil)        ; a new process: nothing is hooked
   (clrhash *hotkey-functions*)
   t)
 (doslib-init)
 (pushnew 'doslib-init sb-ext:*init-hooks*)
+(pushnew 'remove-irq-handlers sb-ext:*exit-hooks*)
 (pushnew 'remove-hotkeys sb-ext:*exit-hooks*)   ; leave the keyboard as we found it
 (defun release-all-critical-errors () (release-critical-errors t))
 (pushnew 'release-all-critical-errors sb-ext:*exit-hooks*)

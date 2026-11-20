@@ -89,19 +89,10 @@
         (values st0 nil)
         (values st0 (receive)))))
 
-;;; ---- interrupt 6: count, tell the interrupt controller, return
-(defvar *counter* nil "Four bytes the handler counts interrupts in.")
-(defun handler-code ()
-  (let ((ds (data-selector)))
-    (machine-code #x50 #x1E                             ; push eax / push ds
-                  #x66 #xB8 (lo ds) (hi ds)             ; mov ax, our data selector
-                  #x8E #xD8                             ; mov ds, ax
-                  #xFF #x05 (lo (sap-int *counter*)) (hi (sap-int *counter*))
-                  (ldb (byte 8 16) (sap-int *counter*)) (ldb (byte 8 24) (sap-int *counter*))
-                                                        ; inc dword [counter]
-                  #xB0 #x20 #xE6 #x20                   ; mov al,20h / out 20h,al
-                  #x1F #x58 #xCF)))                     ; pop ds / pop eax / iretd
-(defun interrupts () (sap-ref-32 *counter* 0))
+;;; ---- interrupt 6: a handler from the library (src/irq.lisp) that counts
+;;; and tells the interrupt controller
+(defvar *hook* nil "The handler on interrupt 6, while a sector is being read.")
+(defun interrupts () (irq-count *hook*))
 (defun wait-interrupt (seen what)
   "Wait until more than SEEN interrupts have come: three seconds at most."
   (unless (wait-until (lambda () (> (interrupts) seen)) 55)
@@ -152,7 +143,7 @@
   "The first sector of the disk in drive A: as 512 bytes, with a list of what
 the controller said on the way.  Signals FLOPPY-FAILURE if it cannot be read."
   (let* ((type (ash (cmos #x10) -4))
-         (vector #x0E) (old-mask (inb #x21)) (old-timer (peek #x440))
+         (old-timer (peek #x440))
          (sector (make-array 512 :element-type '(unsigned-byte 8)))
          (said '()) (interrupts 0))
     (when (zerop type)
@@ -161,17 +152,14 @@ the controller said on the way.  Signals FLOPPY-FAILURE if it cannot be read."
       (fail "Drive A: is not a 1.44MB drive (CMOS type ~D): this reads only those." type))
     (when (= (inb +status+) #xFF)
       (fail "There is no floppy disk controller at port 3F0h."))
-    (unless *counter* (setf *counter* (alien-sap (make-alien (unsigned 32) 1))))
-    (setf (sap-ref-32 *counter* 0) 0)
     (with-dos-memory (segment 1024)
       ;; 512 bytes that do not cross a 64K boundary: one half or the other
       (let ((address (dma-fit (linear segment) 512)))
-        (multiple-value-bind (old-selector old-offset) (get-vector vector)
+        (with-irq-handler (hook 6)
+          (setf *hook* hook)
           (unwind-protect
                (progn
                  (setf (sap-ref-8 (int-sap #x440) 0) #xFF)      ; the BIOS: leave the motor be
-                 (set-vector vector (code-selector) (sap-int (handler-code)))
-                 (outb #x21 (logandc2 old-mask #x40))           ; let interrupt 6 through
                  (push (format nil "reset ST0=~2,'0X" (reset-controller)) said)
                  (outb +output+ #x1C)                           ; drive A:, its motor on
                  (wait-tick 9)                                  ; half a second to gather speed
@@ -205,8 +193,6 @@ the controller said on the way.  Signals FLOPPY-FAILURE if it cannot be read."
             ;; Put it all back, whatever happened; nothing here may wait for long.
             (dma-stop 2)
             (ignore-errors (reset-controller))                  ; which also stops the motor
-            (outb #x21 (logior (logand (inb #x21) (lognot #x40)) (logand old-mask #x40)))
-            (set-vector vector old-selector old-offset)
             ;; the BIOS's notes: no drive calibrated, no motor on, its timer as it was
             (setf (sap-ref-8 (int-sap #x43E) 0) (logand (peek #x43E) #x70)
                   (sap-ref-8 (int-sap #x43F) 0) (logand (peek #x43F) #xF0)
