@@ -190,6 +190,13 @@
     (is (top-level-line-p 2))
     (insert-at 1 2 "\"")
     (is (not (top-level-line-p 2))))
+  ;; a string that is never closed: the forms below it are still forms
+  (with-text ((lines "(defun f ()" "  \"oops" "  1)" "(defun g () 2)") 3 13)
+    (is (top-level-line-p 3))
+    (is (null (line-start-state 3)))
+    (is= :string (line-start-state 2))
+    (is= '(3 . 0) (find-open-paren 3 14))
+    (is= '(3 . 9) (find-open-paren 3 11)))
   (with-text ((lines "#| a comment" "(not code)" "|#" "(code)"))
     (is (not (top-level-line-p 1)))
     (is (top-level-line-p 3)))
@@ -208,7 +215,11 @@
     (goto 0 3) (kill-sexp) (is= "(a  d) e" (buffer-string)))
   (with-text ("(x foo\\ bar y)" 0 3)
     (forward-sexp) (is= '(0 11) (at))
-    (backward-sexp) (is= '(0 3) (at))))
+    (backward-sexp) (is= '(0 3) (at)))
+  (with-text ("(x a\\(b y)" 0 7)
+    (backward-sexp) (is= '(0 3) (at)))
+  (with-text ("(f #\\\\)" 0 7)
+    (backward-sexp) (is= '(0 0) (at))))
 
 (deftest editor-check-parens
   (with-text ("(a (b)")

@@ -102,6 +102,8 @@ space or a comment; NIL at the start."
   (unless l (editor-error "No expression before point"))
   (let ((ch (char-at l (1- c))))
     (cond ((and (delimiter-p ch) (escaped-p l (1- c))) (decf c 3))      ; #\( and the like
+          ((and (find ch "()") (backslashed-p (line-text l) (1- c)))    ; a\(b is a symbol
+           (setf c (token-start (line-text l) c)))
           ((char= ch #\))
            (let ((open (or (find-open-paren l c) (editor-error "Unbalanced parentheses"))))
              (setf l (car open) c (cdr open))))

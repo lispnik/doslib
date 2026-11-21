@@ -128,34 +128,55 @@ comments) or NIL -- given what it starts inside."
                (incf i)))
     (cond (in-string :string) ((plusp depth) depth))))
 ;;; Whether a line starts inside a string or a comment is only known by
-;;; reading from the top of the buffer.  The answer for each line is kept
-;;; with the line it was worked out from; a change makes new strings of the
-;;; lines it touches, so what is remembered holds for as far as the lines
-;;; are still the same objects.
+;;; reading from the top of the buffer.  That is done two ways at once.
+;;; Strictly: every quote counts.  Loosely: a parenthesis in the first
+;;; column starts afresh, outside everything.  The strict reading is the
+;;; right one for text that is whole, and is used when the buffer ends
+;;; outside any string or comment.  When it does not -- a quote has been
+;;; typed and its partner has not -- the strict reading would turn all the
+;;; code below inside out, so the loose one is used until the text is whole
+;;; again.
+;;;
+;;; The answer for each line is kept with the line it was worked out from;
+;;; a change makes new strings of the lines it touches, so what is
+;;; remembered holds for as far as the lines are still the same objects.
+(defun lex-states (&optional (b *buf*))
+  "A vector with what each line of B starts inside -- :STRING, a number (how
+deep in #| |# comments) or NIL -- or NIL if B is not a Lisp file."
+  (when (eq (buf-mode b) 'lisp-mode)
+    (flet ((lines-vector () (make-array 64 :adjustable t :fill-pointer 0)))
+      (let* ((cache (or (buf-lex b)
+                        (setf (buf-lex b) (list (lines-vector) (lines-vector) (lines-vector) nil))))
+             (seen (first cache)) (strict (second cache)) (loose (third cache))
+             (lines (buf-lines b)) (n (length lines))
+             (known (min n (length seen)))
+             (valid (or (loop for i from 0 below known
+                              unless (eq (aref seen i) (aref lines i)) return i)
+                        known)))
+        (when (or (< valid n) (> (length seen) n))
+          (setf (fill-pointer seen) valid (fill-pointer strict) valid (fill-pointer loose) valid)
+          (let ((s (and (plusp valid) (lex-line (aref seen (1- valid)) (aref strict (1- valid)))))
+                (l (and (plusp valid) (lex-line (aref seen (1- valid)) (aref loose (1- valid))))))
+            (loop for i from valid below n
+                  do (let ((text (aref lines i)))
+                       (when (and (plusp (length text)) (char= (char text 0) #\()) (setf l nil))
+                       (vector-push-extend text seen)
+                       (vector-push-extend s strict) (vector-push-extend l loose)
+                       (let ((same (eql s l)))
+                         (setf s (lex-line text s)
+                               l (if same s (lex-line text l))))))
+            (setf (fourth cache) s)))   ; what the buffer ends inside, read strictly
+        (if (fourth cache) loose strict)))))
 (defun line-start-state (line &optional (b *buf*))
   "What line LINE of B starts inside: :STRING, a number (how deep in #| |#
 comments) or NIL.  Always NIL in a buffer that is not a Lisp file."
-  (when (eq (buf-mode b) 'lisp-mode)
-    (let* ((cache (or (buf-lex b)
-                      (setf (buf-lex b) (cons (make-array 64 :adjustable t :fill-pointer 0)
-                                              (make-array 64 :adjustable t :fill-pointer 0)))))
-           (seen (car cache)) (states (cdr cache)) (lines (buf-lines b))
-           (line (min line (length lines)))
-           (known (min line (length seen)))
-           (valid (or (loop for i from 0 below known
-                            unless (eq (aref seen i) (aref lines i)) return i)
-                      known))
-           (state (and (plusp valid) (lex-line (aref seen (1- valid)) (aref states (1- valid))))))
-      (when (< valid line)
-        (setf (fill-pointer seen) valid (fill-pointer states) valid)
-        (loop for i from valid below line
-              do (let ((text (aref lines i)))
-                   (vector-push-extend text seen) (vector-push-extend state states)
-                   (setf state (lex-line text state)))))
-      state)))
+  (let ((states (lex-states b)))
+    (cond ((null states) nil)
+          ((< line (length states)) (aref states line))
+          (t (let ((last (1- (length states)))) (lex-line (line-text last b) (aref states last)))))))
 (defun top-level-line-p (i &optional (b *buf*))
   "Does line I start a top-level form?  A parenthesis in the first column
-does, unless the line starts inside a string or a comment."
+does, unless the line starts inside a string or a comment (see LEX-STATES)."
   (let ((text (line-text i b)))
     (and (plusp (length text)) (char= (char text 0) #\() (null (line-start-state i b)))))
 (defun region-bounds (&optional (b *buf*))
@@ -176,7 +197,7 @@ does, unless the line starts inside a string or a comment."
          (saved (and (not current) (win-point w)))
          (line (min (1- (nlines b)) (if saved (car saved) (buf-line b))))
          (col (min (length (line-text line b)) (if saved (cdr saved) (buf-col b))))
-         (match nil) (state nil))
+         (match nil) (state nil) (states nil) (prompt-line nil))
     (when (or (< line (win-top w)) (>= line (+ (win-top w) height)))
       (setf (win-top w) (max 0 (- line (floor height 2)))))
     (when current
@@ -188,8 +209,12 @@ does, unless the line starts inside a string or a comment."
       ;; (matching parentheses matter in text and code, not in a mode that draws its own screen)
       (unless (mode-hook (buf-mode b) 'line-attributes)
         (setf match (ignore-errors (matching-paren-position)))))
-    (when (eq (buf-mode b) 'lisp-mode)
-      (setf state (ignore-errors (line-start-state (win-top w) b))))
+    (case (buf-mode b)
+      (lisp-mode (setf states (ignore-errors (lex-states b))))
+      (repl-mode (setf prompt-line (repl-prompt-line b))
+       (when prompt-line
+         (loop for i from prompt-line below (min (win-top w) (nlines b))
+               do (setf state (lex-line (line-text i b) (and (> i prompt-line) state)))))))
     (multiple-value-bind (l1 c1 l2 c2)
         (if (and current (buf-mark-active b)) (region-bounds b) (values -1 0 -1 0))
       (dotimes (y height)
@@ -208,8 +233,9 @@ does, unless the line starts inside a string or a comment."
                 (case (buf-mode b)
                   (dired-mode (dired-attributes b i n))
                   ;; (a string or a #| |# comment may have begun on an earlier line)
-                  (lisp-mode (setf state (lisp-attributes text state)))
-                  (repl-mode (lisp-attributes text)
+                  (lisp-mode (lisp-attributes text (and states (aref states i))))
+                  ;; (in the REPL, what is being typed after the prompt may run over lines)
+                  (repl-mode (setf state (lisp-attributes text (and prompt-line (> i prompt-line) state)))
                    (let ((p (search "> " text)))
                      (when (and p (< p 24) (find-package (subseq text 0 p)))
                        (fill *attrs* 10 :end (+ p 2))))))

@@ -833,11 +833,14 @@ Fill *ATTRS* with a colour for each character of a line of Lisp.  STATE is what 
 **`lex-line`** `text state` — Function  
 What a line of Lisp ends inside -- :STRING, a number (how deep in #| |# comments) or NIL -- given what it starts inside.
 
+**`lex-states`** `&optional (b *buf*)` — Function  
+A vector with what each line of B starts inside -- :STRING, a number (how deep in #| |# comments) or NIL -- or NIL if B is not a Lisp file.
+
 **`line-start-state`** `line &optional (b *buf*)` — Function  
 What line LINE of B starts inside: :STRING, a number (how deep in #| |# comments) or NIL.  Always NIL in a buffer that is not a Lisp file.
 
 **`top-level-line-p`** `i &optional (b *buf*)` — Function  
-Does line I start a top-level form?  A parenthesis in the first column does, unless the line starts inside a string or a comment.
+Does line I start a top-level form?  A parenthesis in the first column does, unless the line starts inside a string or a comment (see LEX-STATES).
 
 **`region-bounds`** `&optional (b *buf*)` — Function  
 The mark and point in order: L1 C1 L2 C2.
@@ -1135,6 +1138,9 @@ Where the symbol or number that starts at column C of TEXT ends.  |Bars| and a b
 
 **`token-start`** `text c` — Function  
 Where the symbol or number that ends at column C of TEXT starts.
+
+**`backslashed-p`** `text p` — Function  
+Is the character at column P of TEXT made part of a symbol by a backslash?
 
 **`safe-start`** `line` — Function  
 A line at or before LINE that starts outside any list: the REPL prompt, or the nearest line that starts a top-level form.

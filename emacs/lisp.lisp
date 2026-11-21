@@ -28,6 +28,11 @@ and a backslash make what they hold part of it, spaces and parentheses too."
                    ((delimiter-p ch) (return))
                    (t (decf c)))))
   c)
+(defun backslashed-p (text p)
+  "Is the character at column P of TEXT made part of a symbol by a backslash?"
+  (and (>= p 1) (char= (char text (1- p)) #\\)
+       (not (and (>= p 2) (char= (char text (- p 2)) #\#)))            ; #\( is a character
+       (not (and (>= p 3) (char= (char text (- p 2)) #\\) (char= (char text (- p 3)) #\#)))))
 (defun safe-start (line)
   "A line at or before LINE that starts outside any list: the REPL prompt, or
 the nearest line that starts a top-level form."
@@ -41,11 +46,12 @@ the nearest line that starts a top-level form."
 every parenthesis that is code -- not in a string, a comment or a character --
 from the start of line FROM up to TO-LINE, TO-COL.  Returns true if that
 position is inside a string."
-  (let* ((start (line-start-state from))
-         (in-string (eq start :string)) (block-comment (if (integerp start) start 0)))
+  (let ((states (lex-states)) (in-string nil) (block-comment 0))
     (loop for l from from to (min to-line (1- (nlines)))
           do (let* ((text (line-text l)) (c 0)
+                    (start (if states (aref states l) (if in-string :string block-comment)))
                     (n (if (= l to-line) (min to-col (length text)) (length text))))
+               (setf in-string (eq start :string) block-comment (if (integerp start) start 0))
                (loop while (< c n)
                      do (let ((ch (char text c))
                               (next (if (< (1+ c) (length text)) (char text (1+ c)) #\Newline)))
