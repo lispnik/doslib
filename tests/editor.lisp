@@ -173,8 +173,42 @@
   (is= 1 (lisp-attributes "more of it" 1))
   (is (null (lisp-attributes "the end |# (x)" 1)))
   (with-text ((lines "(defun f ()" "  \"doc" "   more\"" "  1)"))
-    (is= :string (lisp-start-state *buf* 2))
-    (is (null (lisp-start-state *buf* 3)))))
+    (is= :string (line-start-state 2))
+    (is (null (line-start-state 3)))))
+
+(deftest editor-lexing
+  ;; a parenthesis in the first column of a line inside a string starts nothing
+  (with-text ((lines "(defun f ()" "  \"A docstring:" "(not a form) here\"" "  (g 1))" "(defun h () 2)") 3 4)
+    (is (not (top-level-line-p 2)))
+    (is (top-level-line-p 4))
+    (beginning-of-defun) (is= '(0 0) (at))
+    (is= '(0 . 0) (find-open-paren 3 8))
+    (is= '(("f" . 0) ("h" . 4)) (buffer-definitions))
+    (goto 2 3) (end-of-defun) (is= '(4 0) (at))
+    ;; and a change above is noticed: without its opening quote, that line is code
+    (delete-between 1 2 1 3)
+    (is (top-level-line-p 2))
+    (insert-at 1 2 "\"")
+    (is (not (top-level-line-p 2))))
+  (with-text ((lines "#| a comment" "(not code)" "|#" "(code)"))
+    (is (not (top-level-line-p 1)))
+    (is (top-level-line-p 3)))
+  (is (null (lex-line "(a |b \" c| d)" nil)))
+  (is= :string (lex-line "(a \"b" nil))
+  (is (null (lex-line "x \\\" y" nil)))
+  (is= 2 (lex-line "#| a #| b" nil)))
+
+(deftest editor-bar-symbols
+  ;; |a symbol| is one expression, whatever is in it
+  (with-text ("(a |b (c| d) e" 0 3)
+    (forward-sexp) (is= '(0 9) (at))
+    (backward-sexp) (is= '(0 3) (at))
+    (is= '(0 . 0) (find-open-paren 0 12))
+    (goto 0 0) (forward-sexp) (is= '(0 12) (at))
+    (goto 0 3) (kill-sexp) (is= "(a  d) e" (buffer-string)))
+  (with-text ("(x foo\\ bar y)" 0 3)
+    (forward-sexp) (is= '(0 11) (at))
+    (backward-sexp) (is= '(0 3) (at))))
 
 (deftest editor-check-parens
   (with-text ("(a (b)")

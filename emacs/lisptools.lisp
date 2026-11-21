@@ -264,7 +264,7 @@ said is in the buffer *compilation*."
   "The definitions in buffer B: a list of (name . line), in order."
   (loop for i from 0 below (nlines b)
         for name = (definition-name (line-text i b))
-        when name collect (cons name i)))
+        when (and name (top-level-line-p i b)) collect (cons name i)))
 (define-command goto-definition-in-buffer ()
   "Go to one of this buffer's definitions, by name (TAB completes; M-, comes back)."
   (let* ((definitions (or (buffer-definitions) (editor-error "There are no definitions in this buffer")))

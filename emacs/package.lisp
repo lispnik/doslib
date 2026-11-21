@@ -81,7 +81,7 @@
           #:complete-symbol-name #:complete-symbol #:indent-or-complete #:lisp-space
           #:describe-symbol #:lisp-apropos #:sexp-around-point #:expand-macro
           #:expand-macro-all #:fill-buffer #:compile-and-load-file
-          #:ensure-attrs #:lisp-start-state #:check-parens #:*electric-pairs*
+          #:ensure-attrs #:line-start-state #:lex-line #:top-level-line-p #:token-start #:token-end #:check-parens #:*electric-pairs*
           #:electric-pair-mode #:electric-open #:electric-close #:electric-quote
           #:electric-backspace #:definition-name #:buffer-definitions
           #:goto-definition-in-buffer #:toggle-trace #:untrace-all

@@ -90,6 +90,10 @@ or NIL -- and what the line ends inside is returned."
                        ((and (char= c #\:) (or (= i 0) (delimiter-p (char text (1- i)))))
                         (let ((end (or (position-if #'delimiter-p text :start i) n)))
                           (paint i end 13) (setf i end)))
+                       ((char= c #\\) (incf i 2))
+                       ((char= c #\|)   ; |a symbol|: nothing in it is a string or a comment
+                        (let ((end (position #\| text :start (1+ i))))
+                          (setf i (if end (1+ end) (1+ i)))))
                        ((char= c #\()
                         (let* ((end (or (position-if #'delimiter-p text :start (1+ i)) n))
                                (word (subseq text (1+ i) end)))
@@ -103,20 +107,57 @@ or NIL -- and what the line ends inside is returned."
                           (incf i)))
                        (t (incf i)))))
       nil)))
-(defun form-start-p (text)              ; a parenthesis in the first column starts a top-level form
-  (and (plusp (length text)) (char= (char text 0) #\()))
-(defun lisp-start-state (b top)
-  "What line TOP of the Lisp buffer B starts inside: see LISP-ATTRIBUTES."
-  (let* ((top (min top (nlines b)))
-         (start (or (loop for i from (min top (1- (nlines b))) downto (max 0 (- top 300))
-                          when (form-start-p (line-text i b)) return i)
-                    (max 0 (- top 300))))
-         (state nil))
-    (loop for i from start below top
-          do (let ((text (line-text i b)))
-               (ensure-attrs (length text))
-               (setf state (lisp-attributes text (if (form-start-p text) nil state)))))
-    state))
+(defun lex-line (text state)
+  "What a line of Lisp ends inside -- :STRING, a number (how deep in #| |#
+comments) or NIL -- given what it starts inside."
+  (let ((i 0) (n (length text)) (depth (if (integerp state) state 0)) (in-string (eq state :string)))
+    (loop while (< i n)
+          do (let ((c (char text i)) (next (if (< (1+ i) n) (char text (1+ i)) #\Newline)))
+               (cond (in-string (cond ((char= c #\\) (incf i))
+                                      ((char= c #\") (setf in-string nil))))
+                     ((plusp depth)
+                      (cond ((and (char= c #\|) (char= next #\#)) (decf depth) (incf i))
+                            ((and (char= c #\#) (char= next #\|)) (incf depth) (incf i))))
+                     ((char= c #\") (setf in-string t))
+                     ((char= c #\;) (return))
+                     ((char= c #\\) (incf i))
+                     ((and (char= c #\#) (char= next #\\)) (incf i 2))
+                     ((and (char= c #\#) (char= next #\|)) (incf depth) (incf i))
+                     ((char= c #\|)     ; |a symbol|, if it ends on this line
+                      (let ((end (position #\| text :start (1+ i)))) (when end (setf i end)))))
+               (incf i)))
+    (cond (in-string :string) ((plusp depth) depth))))
+;;; Whether a line starts inside a string or a comment is only known by
+;;; reading from the top of the buffer.  The answer for each line is kept
+;;; with the line it was worked out from; a change makes new strings of the
+;;; lines it touches, so what is remembered holds for as far as the lines
+;;; are still the same objects.
+(defun line-start-state (line &optional (b *buf*))
+  "What line LINE of B starts inside: :STRING, a number (how deep in #| |#
+comments) or NIL.  Always NIL in a buffer that is not a Lisp file."
+  (when (eq (buf-mode b) 'lisp-mode)
+    (let* ((cache (or (buf-lex b)
+                      (setf (buf-lex b) (cons (make-array 64 :adjustable t :fill-pointer 0)
+                                              (make-array 64 :adjustable t :fill-pointer 0)))))
+           (seen (car cache)) (states (cdr cache)) (lines (buf-lines b))
+           (line (min line (length lines)))
+           (known (min line (length seen)))
+           (valid (or (loop for i from 0 below known
+                            unless (eq (aref seen i) (aref lines i)) return i)
+                      known))
+           (state (and (plusp valid) (lex-line (aref seen (1- valid)) (aref states (1- valid))))))
+      (when (< valid line)
+        (setf (fill-pointer seen) valid (fill-pointer states) valid)
+        (loop for i from valid below line
+              do (let ((text (aref lines i)))
+                   (vector-push-extend text seen) (vector-push-extend state states)
+                   (setf state (lex-line text state)))))
+      state)))
+(defun top-level-line-p (i &optional (b *buf*))
+  "Does line I start a top-level form?  A parenthesis in the first column
+does, unless the line starts inside a string or a comment."
+  (let ((text (line-text i b)))
+    (and (plusp (length text)) (char= (char text 0) #\() (null (line-start-state i b)))))
 (defun region-bounds (&optional (b *buf*))
   "The mark and point in order: L1 C1 L2 C2."
   (let ((mark (buf-mark b)))
@@ -148,7 +189,7 @@ or NIL -- and what the line ends inside is returned."
       (unless (mode-hook (buf-mode b) 'line-attributes)
         (setf match (ignore-errors (matching-paren-position)))))
     (when (eq (buf-mode b) 'lisp-mode)
-      (setf state (ignore-errors (lisp-start-state b (win-top w)))))
+      (setf state (ignore-errors (line-start-state (win-top w) b))))
     (multiple-value-bind (l1 c1 l2 c2)
         (if (and current (buf-mark-active b)) (region-bounds b) (values -1 0 -1 0))
       (dotimes (y height)
@@ -167,7 +208,7 @@ or NIL -- and what the line ends inside is returned."
                 (case (buf-mode b)
                   (dired-mode (dired-attributes b i n))
                   ;; (a string or a #| |# comment may have begun on an earlier line)
-                  (lisp-mode (setf state (lisp-attributes text (if (form-start-p text) nil state))))
+                  (lisp-mode (setf state (lisp-attributes text state)))
                   (repl-mode (lisp-attributes text)
                    (let ((p (search "> " text)))
                      (when (and p (< p 24) (find-package (subseq text 0 p)))

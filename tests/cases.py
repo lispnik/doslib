@@ -27,6 +27,8 @@ FILES = {
     'T3.TXT': 'alpha beta\nalpha gamma\n',
     'T4.TXT': 'one\ntwo\n',
     'T6.LSP': '(list (alpha beta) gamma)\n',
+    'T7.LSP': ('(in-package #:cl-user)\n(defun seven-up (n) (+ n 7))\n(defmacro twice (x) `(progn ,x ,x))\n'
+               '(defun caller ()\n  (twice (seven-up 1)))\n'),
     # the editor's own tests, loaded into it by the test emacs-lisp-edit
     'ED.LSP': open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'editor.lisp')).read(),
     'T5.TXT': ''.join('line %02d of the file for the mouse test: long enough to click in\n' % n for n in range(1, 21)),
@@ -137,6 +139,11 @@ def emacs(name, file, *steps):
     """An editor test: start it, do STEPS, leave with C-x C-c."""
     return dos(name, ('line', ('emacs ' + file).strip()), ('see', ' -- '), *steps,
                ('key', 'ctrl-x', 'ctrl-c'))
+
+
+def to_buffer(name):
+    """The keys that show the buffer NAME in the editor's window."""
+    return [('key', 'ctrl-x', 'b'), ('see', 'Switch to buffer'), ('type', name), ('key', 'ret')]
 
 
 def all_cases():
@@ -390,6 +397,38 @@ def all_cases():
               ('type', '(list 1 (list 2 3 4))'), ('key', 'ret'), ('see', 'list of length 2'),
               ('key', 'down', 'ret'), ('see', 'list of length 3'),
               ('key', 'l'), ('see', 'list of length 2'), ('key', 'q'), ('gone', 'list of length 2')),
+        # the commands that ask the running Lisp: compile and load, go to a definition,
+        # expand, trace, disassemble, describe, apropos, undefine; then the REPL's
+        # package, emptying it, and finding an old input
+        emacs('emacs-lisp-tools', 'T7.LSP', ('see', 'seven-up'),
+              ('key', 'ctrl-c', 'ctrl-k'), ('see', 'compiled and loaded', 120),
+              ('key', 'ctrl-c', 'i'), ('see', 'Go to definition (3 here)'), ('type', 'caller'), ('key', 'ret'),
+              ('see', 'caller, line 4'),
+              ('key', 'down', 'right', 'right'), ('key', 'ctrl-c', 'ret'),
+              ('see', '(progn (seven-up 1) (seven-up 1))'), *to_buffer('T7.LSP'),
+              ('gone', '(progn (seven-up 1) (seven-up 1))'),
+              ('key', 'ctrl-c', 'ctrl-t'), ('see', 'Trace, or stop tracing'), ('type', 'seven-up'), ('key', 'ret'),
+              ('see', 'seven-up is traced'),
+              ('key', 'shift-alt-semicolon'), ('type', '(cl-user::caller)'), ('key', 'ret'),
+              ('see', '(more in *output*)'), *to_buffer('*output*'), ('see', 'SEVEN-UP 1)'), *to_buffer('T7.LSP'),
+              ('key', 'ctrl-c', 'ctrl-t'), ('see', 'Trace, or stop tracing'), ('type', 'seven-up'), ('key', 'ret'),
+              ('see', 'seven-up is no longer traced'),
+              ('key', 'ctrl-c', 'alt-d'), ('see', 'Disassemble:'), ('type', 'seven-up'), ('key', 'ret'),
+              ('see', 'disassembly for'), *to_buffer('T7.LSP'),
+              ('key', 'ctrl-c', 'ctrl-d', 'd'), ('see', 'Describe symbol:'), ('type', 'twice'), ('key', 'ret'),
+              ('see', 'names a macro'), *to_buffer('T7.LSP'),
+              ('key', 'ctrl-c', 'ctrl-d', 'a'), ('see', 'Apropos:'), ('type', 'seven-u'), ('key', 'ret'),
+              ('see', 'with seven-u in the name'), *to_buffer('T7.LSP'),
+              ('key', 'ctrl-c', 'ctrl-u'), ('see', 'Undefine:'), ('type', 'caller'), ('key', 'ret'),
+              ('see', 'caller is no longer defined'),
+              ('key', 'ctrl-c', 'alt-p'), ('see', 'REPL package: common-lisp-user'), ('key', 'ret'),
+              ('see', 'The REPL is in COMMON-LISP-USER'),
+              ('key', 'ctrl-c', 'ctrl-z'), ('see', 'CL-USER>'),
+              ('type', '(seven-up 1000)'), ('key', 'ret'), ('see', '1007'),
+              ('type', '(list 3 4)'), ('key', 'ret'), ('see', '(3 4)'),
+              ('key', 'ctrl-c', 'alt-o'), ('gone', '1007'),
+              ('key', 'alt-r'), ('see', 'Recall the input containing'), ('type', 'seven'), ('key', 'ret'),
+              ('see', '(seven-up 1000)'), ('key', 'ret'), ('see', '1007')),
         # tests/editor.lisp: the Lisp commands tried on buffers, inside the editor
         emacs('emacs-lisp-edit', '', ('key', 'ctrl-c', 'ctrl-l'), ('see', 'Load file'),
               ('type', 'ED.LSP'), ('key', 'ret'), ('see', '=> T', 120)),
@@ -488,7 +527,7 @@ def printed(machine, host):
 
 def editor_tests_passed(machine, host):
     results = (machine.read('SBCL/ED.TXT') or b'').decode('latin-1').splitlines()
-    if len(results) < 10 or not all(line.startswith('ok ') for line in results):
+    if len(results) < 12 or not all(line.startswith('ok ') for line in results):
         raise Failure('the editor tests: %r' % results)
 
 

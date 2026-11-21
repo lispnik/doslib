@@ -6,21 +6,43 @@
 
 (defun escaped-p (line col)             ; is the character at LINE, COL part of #\x ?
   (and (>= col 2) (char= (char-at line (- col 1)) #\\) (char= (char-at line (- col 2)) #\#)))
+(defun token-end (text c)
+  "Where the symbol or number that starts at column C of TEXT ends.  |Bars|
+and a backslash make what they hold part of it, spaces and parentheses too."
+  (let ((n (length text)))
+    (loop while (< c n)
+          do (let ((ch (char text c)))
+               (cond ((char= ch #\\) (incf c 2))
+                     ((char= ch #\|)
+                      (let ((end (position #\| text :start (1+ c)))) (setf c (if end (1+ end) (1+ c)))))
+                     ((delimiter-p ch) (return))
+                     (t (incf c)))))
+    (min c n)))
+(defun token-start (text c)
+  "Where the symbol or number that ends at column C of TEXT starts."
+  (loop while (> c 0)
+        do (let ((ch (char text (1- c))))
+             (cond ((and (>= c 2) (char= (char text (- c 2)) #\\)) (decf c 2))
+                   ((char= ch #\|)
+                    (let ((open (position #\| text :end (1- c) :from-end t))) (setf c (or open (1- c)))))
+                   ((delimiter-p ch) (return))
+                   (t (decf c)))))
+  c)
 (defun safe-start (line)
-  "A line at or before LINE that starts outside any string, comment or list:
-the REPL prompt, or the nearest line with a parenthesis in the first column."
+  "A line at or before LINE that starts outside any list: the REPL prompt, or
+the nearest line that starts a top-level form."
   (or (and (eq (buf-mode *buf*) 'repl-mode)
            (let ((prompt (repl-prompt-line))) (and prompt (<= prompt line) prompt)))
       (loop for i from line downto (max 0 (- line 500))
-            when (let ((text (line-text i))) (and (plusp (length text)) (char= (char text 0) #\()))
-              return i)
+            when (top-level-line-p i) return i)
       (max 0 (- line 500))))
 (defun scan-parens (from to-line to-col function)
   "Call FUNCTION with true (open) or false (close), the line and the column for
 every parenthesis that is code -- not in a string, a comment or a character --
 from the start of line FROM up to TO-LINE, TO-COL.  Returns true if that
 position is inside a string."
-  (let ((in-string nil) (block-comment 0))
+  (let* ((start (line-start-state from))
+         (in-string (eq start :string)) (block-comment (if (integerp start) start 0)))
     (loop for l from from to (min to-line (1- (nlines)))
           do (let* ((text (line-text l)) (c 0)
                     (n (if (= l to-line) (min to-col (length text)) (length text))))
@@ -34,8 +56,11 @@ position is inside a string."
                                        ((and (char= ch #\#) (char= next #\|)) (incf block-comment) (incf c))))
                                 ((char= ch #\") (setf in-string t))
                                 ((char= ch #\;) (return))
+                                ((char= ch #\\) (incf c))
                                 ((and (char= ch #\#) (char= next #\\)) (incf c 2))
                                 ((and (char= ch #\#) (char= next #\|)) (incf block-comment) (incf c))
+                                ((char= ch #\|)  ; |a symbol|: its parentheses are not code
+                                 (let ((end (position #\| text :start (1+ c)))) (when end (setf c end))))
                                 ((char= ch #\() (funcall function t l c))
                                 ((char= ch #\)) (funcall function nil l c)))
                           (incf c)))))
@@ -83,7 +108,7 @@ position is inside a string."
              (loop do (decf c)
                    until (or (<= c 0) (and (char= (char-at l c) #\")
                                            (char/= (char-at l (1- c)) #\\)))))
-            (t (loop while (and (> c 0) (not (delimiter-p (char-at l (1- c))))) do (decf c))
+            (t (setf c (token-start (line-text l) c))
                (loop while (and (> c 0) (find (char-at l (1- c)) "'`,@#")) do (decf c)))))
     (values l c)))
 (defvar *body-forms*
@@ -322,12 +347,11 @@ a DEFVAR on purpose is asking for the new value."
       text))
 (define-command eval-defun ()
   "Evaluate the top-level form around point.  A DEFVAR gives its variable the value again."
-  (flet ((top-p (i) (let ((text (line-text i))) (and (plusp (length text)) (char= (char text 0) #\()))))
-    (let* ((start (or (loop for i from (point-line) downto 0 when (top-p i) return i)
-                      (editor-error "No top-level form here")))
-           (end (or (find-close-paren start 0) (editor-error "Unbalanced parentheses"))))
-      (in-buffer-package
-        (eval-and-show (defvar-again (text-between start 0 (car end) (cdr end))))))))
+  (let* ((start (or (loop for i from (point-line) downto 0 when (top-level-line-p i) return i)
+                    (editor-error "No top-level form here")))
+         (end (or (find-close-paren start 0) (editor-error "Unbalanced parentheses"))))
+    (in-buffer-package
+      (eval-and-show (defvar-again (text-between start 0 (car end) (cdr end)))))))
 (define-command eval-buffer () "Evaluate the whole buffer." (eval-and-show (buffer-string)))
 (define-command eval-expression () "Read a Lisp expression in the minibuffer and evaluate it."
   (eval-and-show (read-string "Eval: ")))

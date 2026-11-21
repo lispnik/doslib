@@ -9,6 +9,7 @@
   (line 0) (col 0) goal mark mark-active file modified (mode 'fundamental-mode)
   undo redo (crlf t) prompt history (history-index -1)
   read-only                             ; true: commands may not change the text
+  lex                                   ; what LINE-START-STATE remembers
   dir entries (sort :name))             ; Dired: the directory, its DENTRYs, their order
 ;;; A window that is not selected remembers its own point in POINT; the
 ;;; selected window's point is its buffer's.

@@ -830,8 +830,14 @@ Insert STRING at point.
 **`lisp-attributes`** `text &optional state` — Function  
 Fill *ATTRS* with a colour for each character of a line of Lisp.  STATE is what the line starts inside -- :STRING, a number (how deep in #| |# comments) or NIL -- and what the line ends inside is returned.
 
-**`lisp-start-state`** `b top` — Function  
-What line TOP of the Lisp buffer B starts inside: see LISP-ATTRIBUTES.
+**`lex-line`** `text state` — Function  
+What a line of Lisp ends inside -- :STRING, a number (how deep in #| |# comments) or NIL -- given what it starts inside.
+
+**`line-start-state`** `line &optional (b *buf*)` — Function  
+What line LINE of B starts inside: :STRING, a number (how deep in #| |# comments) or NIL.  Always NIL in a buffer that is not a Lisp file.
+
+**`top-level-line-p`** `i &optional (b *buf*)` — Function  
+Does line I start a top-level form?  A parenthesis in the first column does, unless the line starts inside a string or a comment.
 
 **`region-bounds`** `&optional (b *buf*)` — Function  
 The mark and point in order: L1 C1 L2 C2.
@@ -1124,8 +1130,14 @@ Finish recording a keyboard macro, or play the last one back.
 
 **`escaped-p`** `line col` — Function  
 
+**`token-end`** `text c` — Function  
+Where the symbol or number that starts at column C of TEXT ends.  |Bars| and a backslash make what they hold part of it, spaces and parentheses too.
+
+**`token-start`** `text c` — Function  
+Where the symbol or number that ends at column C of TEXT starts.
+
 **`safe-start`** `line` — Function  
-A line at or before LINE that starts outside any string, comment or list: the REPL prompt, or the nearest line with a parenthesis in the first column.
+A line at or before LINE that starts outside any list: the REPL prompt, or the nearest line that starts a top-level form.
 
 **`scan-parens`** `from to-line to-col function` — Function  
 Call FUNCTION with true (open) or false (close), the line and the column for every parenthesis that is code -- not in a string, a comment or a character -- from the start of line FROM up to TO-LINE, TO-COL.  Returns true if that position is inside a string.
