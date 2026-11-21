@@ -828,10 +828,10 @@ Insert STRING at point.
 **`ensure-attrs`** `n` — Function  
 
 **`lisp-attributes`** `text &optional state` — Function  
-Fill *ATTRS* with a colour for each character of a line of Lisp.  STATE is what the line starts inside -- :STRING, a number (how deep in #| |# comments) or NIL -- and what the line ends inside is returned.
+Fill *ATTRS* with a colour for each character of a line of Lisp.  STATE is what the line starts inside -- :STRING, :SYMBOL, a number (how deep in #| |# comments) or NIL -- and what the line ends inside is returned.
 
 **`lex-line`** `text state` — Function  
-What a line of Lisp ends inside -- :STRING, a number (how deep in #| |# comments) or NIL -- given what it starts inside.
+What a line of Lisp ends inside -- :STRING, :SYMBOL (a |symbol| not yet closed), a number (how deep in #| |# comments) or NIL -- given what it starts inside.
 
 **`lex-states`** `&optional (b *buf*)` — Function  
 A vector with what each line of B starts inside -- :STRING, a number (how deep in #| |# comments) or NIL -- or NIL if B is not a Lisp file.
@@ -1134,10 +1134,13 @@ Finish recording a keyboard macro, or play the last one back.
 **`escaped-p`** `line col` — Function  
 
 **`token-end`** `text c` — Function  
-Where the symbol or number that starts at column C of TEXT ends.  |Bars| and a backslash make what they hold part of it, spaces and parentheses too.
+Where the symbol or number that starts at column C of TEXT ends.  |Bars| and a backslash make what they hold part of it, spaces and parentheses too. A bar with no partner takes the rest of the line.
 
 **`token-start`** `text c` — Function  
 Where the symbol or number that ends at column C of TEXT starts.
+
+**`token-around`** `text col` — Function  
+The symbol or number of the line TEXT that column COL is in or just after: where it starts and where it ends, or NIL.
 
 **`backslashed-p`** `text p` — Function  
 Is the character at column P of TEXT made part of a symbol by a backslash?
@@ -1243,6 +1246,12 @@ The next position at or after L, C that is not white space or a comment; NIL at 
 
 **`skip-blank-backward`** `l c` — Function  
 The last position at or before L, C that follows something other than white space or a comment; NIL at the start.
+
+**`symbol-end`** `l c` — Function  
+Where the symbol that starts at L, C ends: a |symbol| may run over lines.
+
+**`symbol-start`** `l c` — Function  
+Where the symbol that ends at L, C starts.
 
 **`sexp-end`** `l c` — Function  
 Where the expression that starts at or after L, C ends.
@@ -1353,6 +1362,12 @@ Delete the character before point; an empty pair goes together.
 Make ( and " bring their partners in Lisp buffers and the REPL, or stop doing so.
 
 ### `emacs/lisptools.lisp`: Lisp from the running image: completion, arguments, documentation,
+
+**`read-name`** `text` — Function  
+The name the reader makes of a symbol written as TEXT: upper case, but as written between |bars| and after a backslash.
+
+**`written-name`** `symbol-name` — Function  
+How a symbol called SYMBOL-NAME is written: in lower case if that reads back as it, between |bars| if not.
 
 **`find-named-symbol`** `name` — Function  
 The symbol written as NAME, and true if there is one.

@@ -40,14 +40,19 @@
     (setf *attrs* (make-array (* 2 (+ n 1)) :element-type '(unsigned-byte 8)))))
 (defun lisp-attributes (text &optional state)
   "Fill *ATTRS* with a colour for each character of a line of Lisp.  STATE is
-what the line starts inside -- :STRING, a number (how deep in #| |# comments)
-or NIL -- and what the line ends inside is returned."
+what the line starts inside -- :STRING, :SYMBOL, a number (how deep in #| |#
+comments) or NIL -- and what the line ends inside is returned."
   (let ((i 0) (n (length text)) (depth 0))
     (labels ((paint (from to attribute) (fill *attrs* attribute :start from :end (min to n)))
              (string-end (from)         ; past the closing quote, or NIL if it is not on this line
                (loop for j from from below n
                      do (cond ((char= (char text j) #\\) (incf j))
                               ((char= (char text j) #\") (return (1+ j))))
+                     finally (return nil)))
+             (bar-end (from)            ; past the | that closes a |symbol|, or NIL
+               (loop for j from from below n
+                     do (cond ((char= (char text j) #\\) (incf j))
+                              ((char= (char text j) #\|) (return (1+ j))))
                      finally (return nil)))
              (comment-end (from)        ; past the |# that brings DEPTH to 0, or NIL
                (let ((j from))
@@ -59,7 +64,11 @@ or NIL -- and what the line ends inside is returned."
                                  (incf depth) (incf j 2))
                                 (t (incf j))))
                  nil)))
-      (cond ((eq state :string)
+      (cond ((eq state :symbol)
+             (let ((end (bar-end 0)))
+               (unless end (return-from lisp-attributes :symbol))
+               (setf i end)))
+            ((eq state :string)
              (let ((end (string-end 0)))
                (paint 0 (or end n) 14)
                (unless end (return-from lisp-attributes :string))
@@ -92,8 +101,9 @@ or NIL -- and what the line ends inside is returned."
                           (paint i end 13) (setf i end)))
                        ((char= c #\\) (incf i 2))
                        ((char= c #\|)   ; |a symbol|: nothing in it is a string or a comment
-                        (let ((end (position #\| text :start (1+ i))))
-                          (setf i (if end (1+ end) (1+ i)))))
+                        (let ((end (bar-end (1+ i))))
+                          (unless end (return-from lisp-attributes :symbol))
+                          (setf i end)))
                        ((char= c #\()
                         (let* ((end (or (position-if #'delimiter-p text :start (1+ i)) n))
                                (word (subseq text (1+ i) end)))
@@ -108,13 +118,20 @@ or NIL -- and what the line ends inside is returned."
                        (t (incf i)))))
       nil)))
 (defun lex-line (text state)
-  "What a line of Lisp ends inside -- :STRING, a number (how deep in #| |#
-comments) or NIL -- given what it starts inside."
-  (let ((i 0) (n (length text)) (depth (if (integerp state) state 0)) (in-string (eq state :string)))
+  "What a line of Lisp ends inside -- :STRING, :SYMBOL (a |symbol| not yet
+closed), a number (how deep in #| |# comments) or NIL -- given what it
+starts inside."
+  (let* ((text (if (simple-string-p text) text (coerce text 'simple-string)))
+         (i 0) (n (length text)) (depth (if (integerp state) state 0))
+         (in-string (eq state :string)) (in-symbol (eq state :symbol)))
+    (declare (type simple-string text) (type fixnum i n depth)
+             (optimize (speed 2) (safety 1)))
     (loop while (< i n)
-          do (let ((c (char text i)) (next (if (< (1+ i) n) (char text (1+ i)) #\Newline)))
+          do (let ((c (schar text i)) (next (if (< (1+ i) n) (schar text (1+ i)) #\Newline)))
                (cond (in-string (cond ((char= c #\\) (incf i))
                                       ((char= c #\") (setf in-string nil))))
+                     (in-symbol (cond ((char= c #\\) (incf i))
+                                      ((char= c #\|) (setf in-symbol nil))))
                      ((plusp depth)
                       (cond ((and (char= c #\|) (char= next #\#)) (decf depth) (incf i))
                             ((and (char= c #\#) (char= next #\|)) (incf depth) (incf i))))
@@ -123,10 +140,9 @@ comments) or NIL -- given what it starts inside."
                      ((char= c #\\) (incf i))
                      ((and (char= c #\#) (char= next #\\)) (incf i 2))
                      ((and (char= c #\#) (char= next #\|)) (incf depth) (incf i))
-                     ((char= c #\|)     ; |a symbol|, if it ends on this line
-                      (let ((end (position #\| text :start (1+ i)))) (when end (setf i end)))))
+                     ((char= c #\|) (setf in-symbol t)))
                (incf i)))
-    (cond (in-string :string) ((plusp depth) depth))))
+    (cond (in-string :string) (in-symbol :symbol) ((plusp depth) depth))))
 ;;; Whether a line starts inside a string or a comment is only known by
 ;;; reading from the top of the buffer.  That is done two ways at once.
 ;;; Strictly: every quote counts.  Loosely: a parenthesis in the first
@@ -150,9 +166,14 @@ deep in #| |# comments) or NIL -- or NIL if B is not a Lisp file."
              (seen (first cache)) (strict (second cache)) (loose (third cache))
              (lines (buf-lines b)) (n (length lines))
              (known (min n (length seen)))
-             (valid (or (loop for i from 0 below known
-                              unless (eq (aref seen i) (aref lines i)) return i)
-                        known)))
+             ;; (this runs at every question about the text: straight at the vectors' storage)
+             (valid (let ((old (sb-ext:array-storage-vector seen))
+                          (new (sb-ext:array-storage-vector lines)))
+                      (declare (type simple-vector old new) (type fixnum known)
+                               (optimize (speed 2) (safety 0)))
+                      (or (loop for i of-type fixnum from 0 below known
+                                unless (eq (svref old i) (svref new i)) return i)
+                          known))))
         (when (or (< valid n) (> (length seen) n))
           (setf (fill-pointer seen) valid (fill-pointer strict) valid (fill-pointer loose) valid)
           (let ((s (and (plusp valid) (lex-line (aref seen (1- valid)) (aref strict (1- valid)))))

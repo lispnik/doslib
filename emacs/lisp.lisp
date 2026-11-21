@@ -8,14 +8,14 @@
   (and (>= col 2) (char= (char-at line (- col 1)) #\\) (char= (char-at line (- col 2)) #\#)))
 (defun token-end (text c)
   "Where the symbol or number that starts at column C of TEXT ends.  |Bars|
-and a backslash make what they hold part of it, spaces and parentheses too."
-  (let ((n (length text)))
+and a backslash make what they hold part of it, spaces and parentheses too.
+A bar with no partner takes the rest of the line."
+  (let ((n (length text)) (in-bars nil))
     (loop while (< c n)
           do (let ((ch (char text c)))
                (cond ((char= ch #\\) (incf c 2))
-                     ((char= ch #\|)
-                      (let ((end (position #\| text :start (1+ c)))) (setf c (if end (1+ end) (1+ c)))))
-                     ((delimiter-p ch) (return))
+                     ((char= ch #\|) (setf in-bars (not in-bars)) (incf c))
+                     ((and (not in-bars) (delimiter-p ch)) (return))
                      (t (incf c)))))
     (min c n)))
 (defun token-start (text c)
@@ -28,6 +28,26 @@ and a backslash make what they hold part of it, spaces and parentheses too."
                    ((delimiter-p ch) (return))
                    (t (decf c)))))
   c)
+(defun token-around (text col)
+  "The symbol or number of the line TEXT that column COL is in or just after:
+where it starts and where it ends, or NIL."
+  (let ((c 0) (n (length text)))
+    (loop while (< c n)
+          do (let ((ch (char text c)))
+               (cond ((char= ch #\")    ; over a string
+                      (incf c)
+                      (loop while (and (< c n) (char/= (char text c) #\"))
+                            do (incf c (if (char= (char text c) #\\) 2 1)))
+                      (incf c))
+                     ((char= ch #\;) (return nil))
+                     ((delimiter-p ch) (incf c))
+                     (t (let* ((start c)
+                               (end (if (and (char= ch #\#) (< (1+ c) n) (char= (char text (1+ c)) #\\))
+                                        (or (position-if #'delimiter-p text :start (min n (+ c 3))) n)
+                                        (max (1+ c) (token-end text c)))))
+                          (cond ((<= start col end) (return (values start end)))
+                                ((> start col) (return nil)))
+                          (setf c end))))))))
 (defun backslashed-p (text p)
   "Is the character at column P of TEXT made part of a symbol by a backslash?"
   (and (>= p 1) (char= (char text (1- p)) #\\)
@@ -46,17 +66,20 @@ the nearest line that starts a top-level form."
 every parenthesis that is code -- not in a string, a comment or a character --
 from the start of line FROM up to TO-LINE, TO-COL.  Returns true if that
 position is inside a string."
-  (let ((states (lex-states)) (in-string nil) (block-comment 0))
+  (let ((states (lex-states)) (in-string nil) (in-symbol nil) (block-comment 0))
     (loop for l from from to (min to-line (1- (nlines)))
           do (let* ((text (line-text l)) (c 0)
-                    (start (if states (aref states l) (if in-string :string block-comment)))
+                    (start (if states (aref states l) (cond (in-string :string) (in-symbol :symbol) (t block-comment))))
                     (n (if (= l to-line) (min to-col (length text)) (length text))))
-               (setf in-string (eq start :string) block-comment (if (integerp start) start 0))
+               (setf in-string (eq start :string) in-symbol (eq start :symbol)
+                     block-comment (if (integerp start) start 0))
                (loop while (< c n)
                      do (let ((ch (char text c))
                               (next (if (< (1+ c) (length text)) (char text (1+ c)) #\Newline)))
                           (cond (in-string (cond ((char= ch #\\) (incf c))
                                                  ((char= ch #\") (setf in-string nil))))
+                                (in-symbol (cond ((char= ch #\\) (incf c))
+                                                 ((char= ch #\|) (setf in-symbol nil))))
                                 ((plusp block-comment)
                                  (cond ((and (char= ch #\|) (char= next #\#)) (decf block-comment) (incf c))
                                        ((and (char= ch #\#) (char= next #\|)) (incf block-comment) (incf c))))
@@ -65,8 +88,7 @@ position is inside a string."
                                 ((char= ch #\\) (incf c))
                                 ((and (char= ch #\#) (char= next #\\)) (incf c 2))
                                 ((and (char= ch #\#) (char= next #\|)) (incf block-comment) (incf c))
-                                ((char= ch #\|)  ; |a symbol|: its parentheses are not code
-                                 (let ((end (position #\| text :start (1+ c)))) (when end (setf c end))))
+                                ((char= ch #\|) (setf in-symbol t))     ; |a symbol|: its parentheses are not code
                                 ((char= ch #\() (funcall function t l c))
                                 ((char= ch #\)) (funcall function nil l c)))
                           (incf c)))))
@@ -369,12 +391,9 @@ a DEFVAR on purpose is asking for the new value."
 (defvar *definition-stack* '() "Where M-. was typed from: (buffer line col), newest first.")
 (defun name-at-point ()
   "The symbol's name that point is in or just after, as it is written; or NIL."
-  (let* ((text (current-line))
-         (start (loop for i downfrom (min (point-col) (length text)) above 0
-                      when (delimiter-p (char text (1- i))) return i
-                      finally (return 0)))
-         (end (or (position-if #'delimiter-p text :start start) (length text))))
-    (and (< start end) (string-left-trim "#'`,@" (subseq text start end)))))
+  (let ((text (current-line)))
+    (multiple-value-bind (start end) (token-around text (min (point-col) (length text)))
+      (and start (< start end) (string-left-trim "#'`,@" (subseq text start end))))))
 (defun bare-name (name)
   "NAME without a package prefix."
   (let ((colon (position #\: name :from-end t)))

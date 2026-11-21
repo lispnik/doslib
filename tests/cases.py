@@ -527,7 +527,7 @@ def printed(machine, host):
 
 def editor_tests_passed(machine, host):
     results = (machine.read('SBCL/ED.TXT') or b'').decode('latin-1').splitlines()
-    if len(results) < 12 or not all(line.startswith('ok ') for line in results):
+    if len(results) < 13 or not all(line.startswith('ok ') for line in results):
         raise Failure('the editor tests: %r' % results)
 
 

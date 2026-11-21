@@ -22,19 +22,54 @@
 
 ;;; ---- symbols by name
 
+(defun read-name (text)
+  "The name the reader makes of a symbol written as TEXT: upper case, but
+as written between |bars| and after a backslash."
+  (with-output-to-string (out)
+    (let ((in-bars nil) (i 0))
+      (loop while (< i (length text))
+            do (let ((c (char text i)))
+                 (cond ((and (char= c #\\) (< (1+ i) (length text)))
+                        (write-char (char text (incf i)) out))
+                       ((char= c #\|) (setf in-bars (not in-bars)))
+                       (t (write-char (if in-bars c (char-upcase c)) out))))
+               (incf i)))))
+(defun written-name (symbol-name)
+  "How a symbol called SYMBOL-NAME is written: in lower case if that reads
+back as it, between |bars| if not."
+  (if (and (plusp (length symbol-name))
+           (every (lambda (c) (and (graphic-char-p c) (not (delimiter-p c)) (not (find c "|\\:#,`"))
+                                   (char= c (char-upcase c))))
+                  symbol-name))
+      (string-downcase symbol-name)
+      (with-output-to-string (out)
+        (write-char #\| out)
+        (loop for c across symbol-name
+              do (when (find c "|\\") (write-char #\\ out))
+                 (write-char c out))
+        (write-char #\| out))))
+(defun name-colons (name)
+  "Where the first and the last colon of NAME are, not counting ones in |bars|."
+  (let ((in-bars nil) (first nil) (last nil) (i 0))
+    (loop while (< i (length name))
+          do (let ((c (char name i)))
+               (cond ((char= c #\\) (incf i))
+                     ((char= c #\|) (setf in-bars (not in-bars)))
+                     ((and (char= c #\:) (not in-bars)) (unless first (setf first i)) (setf last i))))
+             (incf i))
+    (values first last)))
 (defun name-package (name)
   "The package a symbol written as NAME is looked for in, and the part after the colons."
-  (let* ((colon (position #\: name))
-         (last (position #\: name :from-end t)))
+  (multiple-value-bind (colon last) (name-colons name)
     (values (cond ((null colon) (current-package))
                   ((zerop colon) (find-package "KEYWORD"))
-                  (t (find-package (string-upcase (subseq name 0 colon)))))
+                  (t (find-package (read-name (subseq name 0 colon)))))
             (if last (subseq name (1+ last)) name))))
 (defun find-named-symbol (name)
   "The symbol written as NAME, and true if there is one."
   (multiple-value-bind (package bare) (name-package name)
     (if package
-        (multiple-value-bind (symbol status) (find-symbol (string-upcase bare) package)
+        (multiple-value-bind (symbol status) (find-symbol (read-name bare) package)
           (values symbol (and status t)))
         (values nil nil))))
 (defun arglist-string (name)
@@ -55,15 +90,15 @@
   "The symbols PREFIX could be the start of, written as PREFIX is written:
 foo, package:foo (exported ones) or package::foo."
   (multiple-value-bind (package bare) (name-package prefix)
-    (let* ((colon (position #\: prefix))
+    (let* ((colon (name-colons prefix))
            (head (subseq prefix 0 (- (length prefix) (length bare))))
-           (start (string-upcase bare))
+           (start (read-name bare))
            (found '()))
       (labels ((starts-p (name) (and (>= (length name) (length start))
                                      (string= start name :end2 (length start))))
                (consider (symbol)
                  (when (starts-p (symbol-name symbol))
-                   (push (concatenate 'string head (string-downcase (symbol-name symbol))) found))))
+                   (push (concatenate 'string head (written-name (symbol-name symbol))) found))))
         (cond ((null package))
               ((null colon)
                (when (string/= start "")
@@ -91,9 +126,7 @@ foo, package:foo (exported ones) or package::foo."
 (define-command complete-symbol ()
   "Complete the Lisp symbol before point."
   (let* ((text (current-line)) (end (point-col))
-         (start (loop for i downfrom end above 0
-                      when (delimiter-p (char text (1- i))) return i
-                      finally (return 0))))
+         (start (or (token-around text end) end)))
     (loop while (and (< start end) (find (char text start) ",@#`")) do (incf start))
     (let ((prefix (subseq text start end)))
       (when (string= prefix "") (editor-error "There is no symbol before point to complete"))
@@ -120,7 +153,7 @@ foo, package:foo (exported ones) or package::foo."
    (let ((open (enclosing-open)))
      (when open
        (let* ((text (line-text (car open))) (start (1+ (cdr open)))
-              (end (or (position-if #'delimiter-p text :start start) (length text)))
+              (end (token-end text start))
               (arglist (and (< start end) (arglist-string (subseq text start end)))))
          (when arglist (message "~A" arglist)))))))
 
@@ -262,9 +295,10 @@ said is in the buffer *compilation*."
           (and (< start end) (subseq text start end)))))))
 (defun buffer-definitions (&optional (b *buf*))
   "The definitions in buffer B: a list of (name . line), in order."
-  (loop for i from 0 below (nlines b)
+  (loop with states = (lex-states b)    ; (a "(def" in the first column of a string's line is not one)
+        for i from 0 below (nlines b)
         for name = (definition-name (line-text i b))
-        when (and name (top-level-line-p i b)) collect (cons name i)))
+        when (and name (not (and states (aref states i)))) collect (cons name i)))
 (define-command goto-definition-in-buffer ()
   "Go to one of this buffer's definitions, by name (TAB completes; M-, comes back)."
   (let* ((definitions (or (buffer-definitions) (editor-error "There are no definitions in this buffer")))

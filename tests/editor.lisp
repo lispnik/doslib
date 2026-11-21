@@ -258,6 +258,37 @@
   (is= "\"abc\"" (brief "abc"))
   (is= 10 (length (brief (make-string 50 :initial-element #\a) 10))))
 
+(deftest editor-long-symbols
+  ;; a |symbol| that runs over lines
+  (with-text ((lines "(a |b (" "c) d| e)" "(f)") 0 3)
+    (is= :symbol (line-start-state 1))
+    (forward-sexp) (is= '(1 5) (at))
+    (backward-sexp) (is= '(0 3) (at))
+    (is= '(0 . 0) (find-open-paren 1 8))
+    (is (top-level-line-p 2))
+    (is= :symbol (lisp-attributes "(a |b ("))
+    (is (null (lisp-attributes "c) d| e)" :symbol))))
+  ;; names as the reader reads them, and as they are written
+  (is= "foo bar" (read-name "|foo bar|"))
+  (is= "FOO" (read-name "foo"))
+  (is= "a(B" (read-name "\\a\\(b"))
+  (is= "|foo bar|" (written-name "foo bar"))
+  (is= "car" (written-name "CAR"))
+  (is= "1+" (written-name "1+"))
+  (is= "|Car|" (written-name "Car"))
+  (with-text ("(foo |two words| bar)" 0 9)
+    (is= "|two words|" (name-at-point))
+    (is= '(5 16) (multiple-value-list (token-around (current-line) 16)))
+    (let ((symbol (intern "two words" (current-package))))
+      (is (eq symbol (find-named-symbol "|two words|")))
+      (is (member "|two words|" (symbol-completions "|two w") :test #'string=))
+      (unintern symbol (current-package))))
+  (with-text ("(list |two w" 0 12)
+    (let ((symbol (intern "two words" (current-package))))
+      (complete-symbol)
+      (is= "(list |two words|" (buffer-string))
+      (unintern symbol (current-package)))))
+
 (defun run-tests (&optional (file "ED.TXT"))
   "Run the tests; one line for each goes to FILE.  Returns how many failed."
   (let ((failed 0))
