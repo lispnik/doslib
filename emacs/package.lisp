@@ -9,7 +9,10 @@
 ;;;; keyboard macros (F3 ... F4), Lisp indentation and colouring, and a REPL
 ;;;; buffer.  An error in evaluated code opens a debugger that lists the
 ;;;; restarts (type a number to invoke one).  C-x d is Dired: a directory as
-;;;; a buffer, to open, copy, rename and delete files from.  Every key runs a Lisp function looked up in a
+;;;; a buffer, to open, copy, rename and delete files from.  Lisp is edited
+;;;; by the expression (C-M-f, C-M-k, M-s ...: see sexp.lisp) and with the
+;;;; running Lisp's help: completion, argument lists, DESCRIBE, macro
+;;;; expansion, compile-and-load (lisptools.lisp).  Every key runs a Lisp function looked up in a
 ;;;; keymap, so the editor is extended the way Emacs is -- from inside:
 ;;;;
 ;;;;   (define-command insert-date ()
@@ -65,7 +68,20 @@
           #:find-definition #:pop-definition #:name-at-point #:editor-interrupted
           #:mouse-mode #:select-window #:window-at-row
           #:read-forms #:printed #:eval-and-show #:eval-last-sexp #:eval-defun
-          #:eval-buffer #:eval-expression #:repl-buffer #:repl-emit
+          #:eval-buffer #:eval-expression #:buffer-package #:current-package
+          #:in-buffer-package #:eval-print-last-sexp #:eval-region
+          #:before-p #:code-end #:skip-blank-forward #:skip-blank-backward
+          #:sexp-end #:sexp-start #:enclosing-open #:enclosing-list #:defun-bounds
+          #:forward-sexp #:backward-sexp #:backward-up-list #:up-list #:down-list
+          #:beginning-of-defun #:end-of-defun #:kill-sexp #:backward-kill-sexp
+          #:mark-sexp #:mark-defun #:transpose-sexps #:reindent-line #:reindent-lines
+          #:indent-sexp #:indent-defun #:indent-region #:comment-lines #:comment-dwim
+          #:insert-parentheses #:splice-sexp #:raise-sexp #:slurp-sexp #:barf-sexp
+          #:find-named-symbol #:arglist-string #:symbol-completions
+          #:complete-symbol-name #:complete-symbol #:indent-or-complete #:lisp-space
+          #:describe-symbol #:lisp-apropos #:sexp-around-point #:expand-macro
+          #:expand-macro-all #:fill-buffer #:compile-and-load-file
+          #:repl-buffer #:repl-emit
           #:repl-prompt #:repl-prompt-line #:repl-input #:repl-return
           #:repl-history #:repl-previous-input #:repl-next-input
           #:repl-beginning-of-line #:select-buffer #:mode-for-file

@@ -13,13 +13,16 @@
                            (#x52 . "<insert>") (#x53 . "<delete>") (#x73 . "C-<left>")
                            (#x74 . "C-<right>") (#x77 . "C-<home>") (#x75 . "C-<end>")
                            (#x0F . "<backtab>") (#x03 . "C-@") (#x0E . "M-<backspace>")
-                           (#x85 . "<f11>") (#x86 . "<f12>") (#x35 . "M-/"))))
+                           (#x85 . "<f11>") (#x86 . "<f12>") (#x35 . "M-/")
+                           (#xA5 . "M-TAB") (#x2B . "M-\\"))))
         (and (= scan #x82) (if shifted "M-_" "M--"))
         (and (<= #x3B scan #x44) (format nil "<f~D>" (- scan #x3A)))
         (and (= scan #x33) (if shifted "M-<" "M-,"))
         (and (= scan #x34) (if shifted "M->" "M-."))
         (and (= scan #x27) (if shifted "M-:" "M-;"))
         (and (= scan #x7C) shifted "M-%")
+        (and (= scan #x80) shifted "M-(")
+        (and (= scan #x81) shifted "M-)")
         (row #x10 "qwertyuiop") (row #x1E "asdfghjkl") (row #x2C "zxcvbnm") (row #x78 "1234567890")
         (format nil "<scan-~X>" scan))))
 ;;; While the editor waits for a key it can do other things: look at a
@@ -67,9 +70,17 @@
                         ((< ascii 32) (format nil "C-~C" (code-char (+ ascii 64))))
                         ((= ascii 32) (if (logtest shift 4) "C-SPC" "SPC"))
                         (t (string (code-char ascii))))))
+        ;; Ctrl and Alt together: the BIOS reports the Alt key, and Ctrl is in the shift state
+        (when (and (logtest shift 4) (> (length key) 2) (string= "M-" key :end2 2))
+          (setf key (concatenate 'string "C-" key)))
         (when *defining-macro* (push key *macro-keys*))  ; keys from the keyboard only
         key)))
 (defun read-key ()
-  "The next key, by name.  ESC followed by a key is Meta."
+  "The next key, by name.  ESC followed by a key is Meta: ESC f is M-f, ESC C-f is C-M-f."
   (let ((key (read-raw-key)))
-    (if (equal key "ESC") (concatenate 'string "M-" (read-raw-key)) key)))
+    (if (equal key "ESC")
+        (let ((next (read-raw-key)))
+          (if (and (> (length next) 2) (string= "C-" next :end2 2))
+              (concatenate 'string "C-M-" (subseq next 2))
+              (concatenate 'string "M-" next)))
+        key)))

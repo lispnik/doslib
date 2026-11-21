@@ -262,17 +262,62 @@ anything longer in the buffer *output*."
               (dolist (w *windows*) (when (eq (win-buf w) b) (setf (win-point w) nil)))
               (message "=> ~A   (more in *output*)" last))
             (message "=> ~A" everything))))))
-(define-command eval-last-sexp ()
-  "Evaluate the Lisp expression before point."
+;;; Code in a file is read in the file's package: the one named by the
+;;; nearest (in-package ...) above point.  A buffer with no file (*scratch*,
+;;; the REPL) uses the REPL's package, which evaluating an IN-PACKAGE form
+;;; there changes.
+(defun buffer-package (&optional line)
+  "The package named by the nearest (in-package ...) at or above LINE of a
+buffer that has a file, if there is such a package."
+  (when (and *buf* (buf-file *buf*))
+    (loop for i from (min (or line (point-line)) (1- (nlines))) downto 0
+          do (let ((text (line-text i)))
+               (when (and (> (length text) 12) (string-equal "(in-package" text :end2 11))
+                 (return (ignore-errors
+                          (let ((*read-eval* nil) (*package* (find-package "KEYWORD")))
+                            (find-package (string (read-from-string text t nil :start 11)))))))))))
+(defun current-package ()
+  "The package the code at point is read in."
+  (or (buffer-package) *repl-package*))
+(defmacro in-buffer-package (&body body)
+  "Do BODY with the evaluation commands reading in the buffer's package, if it names one."
+  (let ((package (gensym)))
+    `(let ((,package (buffer-package)))
+       (progv (and ,package '(*repl-package*)) (and ,package (list ,package))
+         ,@body))))
+(define-command eval-print-last-sexp ()
+  "Evaluate the Lisp expression before point and insert what it prints and returns."
   (multiple-value-bind (line col) (sexp-start-before-point)
-    (eval-and-show (text-between line col (point-line) (point-col)))))
+    (in-buffer-package
+      (multiple-value-bind (forms status) (read-forms (text-between line col (point-line) (point-col)))
+        (unless (eq status :ok)
+          (editor-error "Can't read that: ~A" (if (eq status :incomplete) "incomplete expression" status)))
+        (dolist (form forms)
+          (multiple-value-bind (values output condition) (eval-captured form)
+            (insert (format nil "~%~A~&~A~%" output
+                            (if condition
+                                (format nil "; ~A: ~A" (type-of condition)
+                                        (one-line (princ-to-string condition)))
+                                (printed values))))))))))
+(define-command eval-last-sexp ()
+  "Evaluate the Lisp expression before point; with C-u, insert the result as well."
+  (if *prefix-argument*
+      (eval-print-last-sexp)
+      (multiple-value-bind (line col) (sexp-start-before-point)
+        (in-buffer-package
+          (eval-and-show (text-between line col (point-line) (point-col)))))))
+(setf (get 'eval-last-sexp 'takes-prefix) t)
+(define-command eval-region ()
+  "Evaluate the Lisp expressions between point and the mark."
+  (multiple-value-bind (l1 c1 l2 c2) (region-bounds)
+    (in-buffer-package (eval-and-show (text-between l1 c1 l2 c2)))))
 (define-command eval-defun ()
   "Evaluate the top-level form around point."
   (flet ((top-p (i) (let ((text (line-text i))) (and (plusp (length text)) (char= (char text 0) #\()))))
     (let* ((start (or (loop for i from (point-line) downto 0 when (top-p i) return i)
                       (editor-error "No top-level form here")))
            (end (or (find-close-paren start 0) (editor-error "Unbalanced parentheses"))))
-      (eval-and-show (text-between start 0 (car end) (cdr end))))))
+      (in-buffer-package (eval-and-show (text-between start 0 (car end) (cdr end)))))))
 (define-command eval-buffer () "Evaluate the whole buffer." (eval-and-show (buffer-string)))
 (define-command eval-expression () "Read a Lisp expression in the minibuffer and evaluate it."
   (eval-and-show (read-string "Eval: ")))

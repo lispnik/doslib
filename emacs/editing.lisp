@@ -27,7 +27,7 @@
   "Delete the character before point."
   (backward-char) (delete-char))
 (defun kill-new (text &optional before)
-  (if (and (member *last-command* '(kill-line kill-word backward-kill-word kill-region)) *kill-ring*)
+  (if (and (member *last-command* '(kill-line kill-word backward-kill-word kill-region kill-sexp backward-kill-sexp)) *kill-ring*)
       (setf (first *kill-ring*) (if before
                                     (concatenate 'string text (first *kill-ring*))
                                     (concatenate 'string (first *kill-ring*) text)))

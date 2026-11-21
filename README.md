@@ -153,6 +153,36 @@ the restarts; so does Ctrl-Break, if the code will not stop. `M-.` goes to
 the definition of the name at the cursor and `M-,` comes back; `C-_`
 undoes and `M-_` redoes.
 
+### Editing Lisp
+
+The editor runs in the same Lisp as the code it edits, and treats that
+code as expressions. `C-M-` is Ctrl and Alt together; `ESC` and then the
+Ctrl key does the same, for a host that keeps Ctrl-Alt to itself.
+
+| Keys | What they do |
+|---|---|
+| `C-M-f`, `C-M-b` | Forward and back over an expression |
+| `C-M-u`, `C-M-d`, `M-)` | Out of this list to its start, into the next list, out past its end |
+| `C-M-a`, `C-M-e` | To the start and the end of the top-level form |
+| `C-M-k`, `C-M-<backspace>` | Kill the expression after point, or before it |
+| `C-M-SPC`, `C-M-h` | Mark the expression; mark the top-level form |
+| `C-M-t` | Swap the expressions either side of point |
+| `TAB`, `C-M-q`, `M-q`, `C-M-\` | Indent the line, the expression after point, the top-level form, the region |
+| `M-;` | Comment the region out, or take its comments off; without a region, a comment on this line |
+| `M-(` | A pair of parentheses, round the region if there is one |
+| `M-s`, `M-r` | Take this list's parentheses away; put the expression after point in place of its list |
+| `C-c )`, `C-c }` | Move the closing parenthesis out past the next expression, or back in before the last |
+| `M-TAB`, `M-/` (and `TAB` in the REPL) | Complete the symbol before point from the running Lisp |
+| `SPC` | After a function's or macro's name, its arguments appear in the echo area |
+| `C-c C-d d`, `C-c C-d a` | Describe a symbol; list the symbols with some text in their names |
+| `C-c RET`, `C-c M-m` | Expand the macro call at point once, or all the way down |
+| `C-x C-e`, `C-c C-c`, `C-c C-r`, `C-c C-b` | Evaluate the expression before point, the top-level form, the region, the buffer |
+| `C-u C-x C-e` | Evaluate the expression before point and insert the result |
+| `C-c C-k` | Save, compile and load the file; what the compiler said is in `*compilation*` |
+
+Code in a file is read in the package of the nearest `(in-package ...)`
+above it; `*scratch*` and the REPL share the REPL's package.
+
 ### The extras
 
 `(asdf:load-system :doslib/emacs-extras)` adds these; the `EMACS.EXE` that

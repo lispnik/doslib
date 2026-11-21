@@ -18,7 +18,7 @@ A test is a dictionary:
 To write a new one, "tests/run.py --look NAME" shows what the example puts
 on the screen.
 """
-import socket, time, urllib.request
+import os, socket, time, urllib.request
 from dosvm import Failure, DOS_PROMPT
 
 # Files put in D:\SBCL before the machine starts (with DOS line endings).
@@ -26,6 +26,9 @@ FILES = {
     'T2.TXT': 'one\ntwo\nthree\n',
     'T3.TXT': 'alpha beta\nalpha gamma\n',
     'T4.TXT': 'one\ntwo\n',
+    'T6.LSP': '(list (alpha beta) gamma)\n',
+    # the editor's own tests, loaded into it by the test emacs-lisp-edit
+    'ED.LSP': open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'editor.lisp')).read(),
     'T5.TXT': ''.join('line %02d of the file for the mouse test: long enough to click in\n' % n for n in range(1, 21)),
 }
 
@@ -375,6 +378,16 @@ def all_cases():
               ('type', '(expt 2 64)'), ('key', 'ret'), ('see', '18446744073709551616'),
               ('type', '(car 1)'), ('key', 'ret'), ('see', 'Condition of type TYPE-ERROR'),
               ('key', 'q'), ('see', 'Evaluation aborted on TYPE-ERROR')),
+        # Lisp by the expression: a Ctrl-Alt key, the arguments shown on Space, completion
+        emacs('emacs-sexp', 'T6.LSP', ('see', 'gamma'),
+              ('key', 'right', 'right', 'right', 'right', 'right', 'right'),
+              ('key', 'ctrl-alt-k'), ('key', 'end', 'ctrl-y', 'ret'),
+              ('type', '(mapcar '), ('see', '(mapcar function'),
+              ('type', "#'multiple-value-l"), ('key', 'alt-slash'), ('see', 'multiple-value-list'),
+              ('key', 'ctrl-x', 'ctrl-s'), ('see', 'Wrote')),
+        # tests/editor.lisp: the Lisp commands tried on buffers, inside the editor
+        emacs('emacs-lisp-edit', '', ('key', 'ctrl-c', 'ctrl-l'), ('see', 'Load file'),
+              ('type', 'ED.LSP'), ('key', 'ret'), ('see', '=> T', 120)),
         emacs('emacs-dired', '',
               ('key', 'ctrl-x', 'd'), ('see', 'Dired (directory)'), ('key', 'ret'), ('see', 'Directory of D:\\SBCL\\'),
               ('see', 'DEMO.BAT'), ('key', 'f1'), ('see', 'describe-bindings')),
@@ -468,6 +481,12 @@ def printed(machine, host):
         raise Failure('nothing reached the printer')
 
 
+def editor_tests_passed(machine, host):
+    results = (machine.read('SBCL/ED.TXT') or b'').decode('latin-1').splitlines()
+    if len(results) < 5 or not all(line.startswith('ok ') for line in results):
+        raise Failure('the editor tests: %r' % results)
+
+
 AFTER = [
     ('ports', printed),
     ('emacs-edit', file_is('T1.TXT', b'Hello, DOS.\r\n(+ 40 2)\r\n')),
@@ -475,5 +494,7 @@ AFTER = [
     ('emacs-final-newline', file_is('T4.TXT', b'one\r\ntwo\r\nthree\r\n')),
     ('sprite', sprite_saved),
     ('emacs-mouse', mouse_edited),
+    ('emacs-sexp', file_is('T6.LSP', b"(list  gamma)(alpha beta)\r\n(mapcar #'multiple-value-list\r\n")),
+    ('emacs-lisp-edit', editor_tests_passed),
     ('emacs-search', file_is('T3.TXT', b'delta beta\r\ndelta gamma!\r\n')),
 ]

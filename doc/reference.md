@@ -856,7 +856,7 @@ Functions to call while waiting for a key at the top level.
 **`read-raw-key`** `` — Function  
 
 **`read-key`** `` — Function  
-The next key, by name.  ESC followed by a key is Meta.
+The next key, by name.  ESC followed by a key is Meta: ESC f is M-f, ESC C-f is C-M-f.
 
 ### `emacs/keymaps.lisp`: Keymaps
 
@@ -1172,8 +1172,23 @@ All the forms in TEXT, then :OK, :INCOMPLETE, or an error.
 **`eval-and-show`** `text` — Function  
 Evaluate the forms in TEXT; show the result in the echo area, and anything longer in the buffer *output*.
 
+**`buffer-package`** `&optional line` — Function  
+The package named by the nearest (in-package ...) at or above LINE of a buffer that has a file, if there is such a package.
+
+**`current-package`** `` — Function  
+The package the code at point is read in.
+
+**`in-buffer-package`** `&body body` — Macro  
+Do BODY with the evaluation commands reading in the buffer's package, if it names one.
+
+**`eval-print-last-sexp`** `` — Command  
+Evaluate the Lisp expression before point and insert what it prints and returns.
+
 **`eval-last-sexp`** `` — Command  
-Evaluate the Lisp expression before point.
+Evaluate the Lisp expression before point; with C-u, insert the result as well.
+
+**`eval-region`** `` — Command  
+Evaluate the Lisp expressions between point and the mark.
 
 **`eval-defun`** `` — Command  
 Evaluate the top-level form around point.
@@ -1192,6 +1207,150 @@ Go to the definition of a function, macro, variable or command: by default the o
 
 **`pop-definition`** `` — Command  
 Go back to where M-. was last typed.
+
+### `emacs/sexp.lisp`: Lisp by the expression: moving, killing, indenting, restructuring
+
+**`before-p`** `l1 c1 l2 c2` — Function  
+
+**`code-end`** `line` — Function  
+The column where the code of line LINE ends: where its comment starts, or its length.
+
+**`skip-blank-forward`** `l c` — Function  
+The next position at or after L, C that is not white space or a comment; NIL at the end.
+
+**`skip-blank-backward`** `l c` — Function  
+The last position at or before L, C that follows something other than white space or a comment; NIL at the start.
+
+**`sexp-end`** `l c` — Function  
+Where the expression that starts at or after L, C ends.
+
+**`sexp-start`** `l c` — Function  
+Where the expression that ends at or before L, C starts.
+
+**`enclosing-open`** `&optional (l (point-line)) (c (point-col))` — Function  
+Where the parenthesis that opens the list around L, C is: (line . column), or NIL.
+
+**`enclosing-list`** `` — Function  
+The list around point: the line and column of its opening parenthesis, and of its closing one.
+
+**`defun-bounds`** `` — Function  
+The top-level form around point, or the next one: its first line, and the line and column where it ends.
+
+**`forward-sexp`** `` — Command  
+Move over the expression after point.
+
+**`backward-sexp`** `` — Command  
+Move back over the expression before point.
+
+**`backward-up-list`** `` — Command  
+Move out of this list, to the parenthesis that opens it.
+
+**`up-list`** `` — Command  
+Move out of this list, past the parenthesis that closes it.
+
+**`down-list`** `` — Command  
+Move into the next list, past the parenthesis that opens it.
+
+**`beginning-of-defun`** `` — Command  
+Move to the start of this top-level form, or of the one before.
+
+**`end-of-defun`** `` — Command  
+Move to the end of this top-level form, or of the next.
+
+**`kill-sexp`** `` — Command  
+Kill the expression after point.
+
+**`backward-kill-sexp`** `` — Command  
+Kill the expression before point.
+
+**`mark-sexp`** `` — Command  
+Put the mark after the expression that follows point.
+
+**`mark-defun`** `` — Command  
+Put point at the start of this top-level form and the mark after it.
+
+**`transpose-sexps`** `` — Command  
+Swap the expressions before and after point.
+
+**`reindent-line`** `line` — Function  
+Indent line LINE as Lisp (a blank one loses its spaces); returns how far its text moved.
+
+**`reindent-lines`** `from to` — Function  
+Indent lines FROM to TO; point stays on the text it was on.  Returns how many changed.
+
+**`indent-sexp`** `` — Command  
+Indent every line of the expression after point.
+
+**`indent-defun`** `` — Command  
+Indent every line of the top-level form around point.
+
+**`indent-region`** `` — Command  
+Indent every line of the region as Lisp.
+
+**`comment-lines`** `first last` — Function  
+Comment out lines FIRST to LAST; if they all are already, take the comments off.
+
+**`comment-dwim`** `` — Command  
+With a region: comment its lines out, or take their comments off.  Without: go to this line's comment, or start one.
+
+**`insert-parentheses`** `` — Command  
+Insert a pair of parentheses and put point between them; round the region, if there is one.
+
+**`splice-sexp`** `` — Command  
+Take away the parentheses of the list point is in.
+
+**`raise-sexp`** `` — Command  
+Put the expression after point in place of the list it is in.
+
+**`slurp-sexp`** `` — Command  
+Move this list's closing parenthesis past the expression after it: (a b) c becomes (a b c).
+
+**`barf-sexp`** `` — Command  
+Move this list's closing parenthesis back before its last expression: (a b c) becomes (a b) c.
+
+### `emacs/lisptools.lisp`: Lisp from the running image: completion, arguments, documentation,
+
+**`find-named-symbol`** `name` — Function  
+The symbol written as NAME, and true if there is one.
+
+**`arglist-string`** `name` — Function  
+The function or macro NAME with its arguments, as it would be called; or NIL.
+
+**`symbol-completions`** `prefix` — Function  
+The symbols PREFIX could be the start of, written as PREFIX is written: foo, package:foo (exported ones) or package::foo.
+
+**`complete-symbol-name`** `text` — Function  
+A completion function for the minibuffer, over Lisp's symbols.
+
+**`complete-symbol`** `` — Command  
+Complete the Lisp symbol before point.
+
+**`indent-or-complete`** `` — Command  
+Indent the line; if that changes nothing and point follows a symbol, complete it.
+
+**`lisp-space`** `` — Command  
+Insert a space; after the name of a function or a macro, show its arguments.
+
+**`describe-symbol`** `` — Command  
+Show what Lisp knows about a symbol: by default the one point is on.
+
+**`lisp-apropos`** `` — Command  
+List the symbols whose names contain some text, and what each one names.
+
+**`sexp-around-point`** `` — Function  
+The text of the expression that starts at point; failing that, of the one that ends there.
+
+**`expand-macro`** `` — Command  
+Expand the macro call at point, once, into the buffer *macroexpansion*.
+
+**`expand-macro-all`** `` — Command  
+Expand the macro call at point and every one inside it, into the buffer *macroexpansion*.
+
+**`fill-buffer`** `name text` — Function  
+Put TEXT in the buffer NAME without showing it.
+
+**`compile-and-load-file`** `` — Command  
+Save the buffer, compile its file and load the result.  What the compiler said is in the buffer *compilation*.
 
 ### `emacs/repl.lisp`: The REPL buffer
 

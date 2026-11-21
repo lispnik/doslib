@@ -159,6 +159,8 @@
                (:file "editing")
                (:file "search")
                (:file "lisp")
+               (:file "sexp")
+               (:file "lisptools")
                (:file "repl")
                (:file "files")
                (:file "dired")
