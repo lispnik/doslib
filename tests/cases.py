@@ -385,6 +385,11 @@ def all_cases():
               ('type', '(mapcar '), ('see', '(mapcar function'),
               ('type', "#'multiple-value-l"), ('key', 'alt-slash'), ('see', 'multiple-value-list'),
               ('key', 'ctrl-x', 'ctrl-s'), ('see', 'Wrote')),
+        # the inspector: a list, into its second element, back, and out
+        emacs('emacs-inspect', '', ('key', 'ctrl-c', 'shift-i'), ('see', 'Inspect the value of'),
+              ('type', '(list 1 (list 2 3 4))'), ('key', 'ret'), ('see', 'list of length 2'),
+              ('key', 'down', 'ret'), ('see', 'list of length 3'),
+              ('key', 'l'), ('see', 'list of length 2'), ('key', 'q'), ('gone', 'list of length 2')),
         # tests/editor.lisp: the Lisp commands tried on buffers, inside the editor
         emacs('emacs-lisp-edit', '', ('key', 'ctrl-c', 'ctrl-l'), ('see', 'Load file'),
               ('type', 'ED.LSP'), ('key', 'ret'), ('see', '=> T', 120)),
@@ -483,7 +488,7 @@ def printed(machine, host):
 
 def editor_tests_passed(machine, host):
     results = (machine.read('SBCL/ED.TXT') or b'').decode('latin-1').splitlines()
-    if len(results) < 5 or not all(line.startswith('ok ') for line in results):
+    if len(results) < 10 or not all(line.startswith('ok ') for line in results):
         raise Failure('the editor tests: %r' % results)
 
 

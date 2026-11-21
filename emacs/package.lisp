@@ -81,6 +81,15 @@
           #:complete-symbol-name #:complete-symbol #:indent-or-complete #:lisp-space
           #:describe-symbol #:lisp-apropos #:sexp-around-point #:expand-macro
           #:expand-macro-all #:fill-buffer #:compile-and-load-file
+          #:ensure-attrs #:lisp-start-state #:check-parens #:*electric-pairs*
+          #:electric-pair-mode #:electric-open #:electric-close #:electric-quote
+          #:electric-backspace #:definition-name #:buffer-definitions
+          #:goto-definition-in-buffer #:toggle-trace #:untrace-all
+          #:disassemble-function #:undefine-function #:set-repl-package
+          #:repl-prompt-text #:repl-new-prompt #:repl-clear #:repl-search-history
+          #:*inspector-object* #:brief #:object-parts #:inspect-object #:inspect-expression
+          #:inspector-part #:inspector-back #:inspector-refresh #:inspector-describe
+          #:inspector-quit
           #:repl-buffer #:repl-emit
           #:repl-prompt #:repl-prompt-line #:repl-input #:repl-return
           #:repl-history #:repl-previous-input #:repl-next-input

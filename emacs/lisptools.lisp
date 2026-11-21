@@ -246,3 +246,95 @@ said is in the buffer *compilation*."
                    (file-namestring file) (- (get-universal-time) start) warnings notes
                    (plusp (+ warnings notes)))
           (message "~A was NOT loaded: ~A  (see *compilation*)" (file-namestring file) failure)))))
+
+;;; ---- the definitions in this buffer
+
+(defun definition-name (text)
+  "The name the line TEXT begins a definition of, or NIL: (defun name, (defstruct (name,
+(defmethod name, (define-command name ..."
+  (when (and (> (length text) 5) (string-equal "(def" text :end2 4))
+    (let* ((space (position #\Space text))
+           (start (and space (position #\Space text :start space :test-not #'char=))))
+      (when start
+        (when (char= (char text start) #\() (incf start))
+        (when (and (< start (length text)) (char= (char text start) #\")) (incf start))
+        (let ((end (or (position-if #'delimiter-p text :start start) (length text))))
+          (and (< start end) (subseq text start end)))))))
+(defun buffer-definitions (&optional (b *buf*))
+  "The definitions in buffer B: a list of (name . line), in order."
+  (loop for i from 0 below (nlines b)
+        for name = (definition-name (line-text i b))
+        when name collect (cons name i)))
+(define-command goto-definition-in-buffer ()
+  "Go to one of this buffer's definitions, by name (TAB completes; M-, comes back)."
+  (let* ((definitions (or (buffer-definitions) (editor-error "There are no definitions in this buffer")))
+         (names (mapcar #'car definitions))
+         (name (string-trim " " (read-string
+                                 (format nil "Go to definition (~D here): " (length names))
+                                 :complete (lambda (text)
+                                             (multiple-value-bind (new matches)
+                                                 (funcall (complete-from names) text)
+                                               (values new (if (rest matches)
+                                                               (shown-candidates matches (- 44 (length new)))
+                                                               matches)))))))
+         (place (or (assoc name definitions :test #'string-equal)
+                    (find-if (lambda (d) (and (>= (length (car d)) (length name)) (string/= name "")
+                                              (string-equal name (car d) :end2 (length name))))
+                             definitions)
+                    (editor-error "No definition of ~A in this buffer" name))))
+    (push (list *buf* (point-line) (point-col)) *definition-stack*)
+    (goto (cdr place) 0)
+    (recenter)
+    (message "~A, line ~D" (car place) (1+ (cdr place)))))
+
+;;; ---- tracing, disassembling, undefining
+
+(defun read-function-name (prompt)
+  "Ask for the name of a function, by default the one at point; returns the symbol."
+  (let ((name (string-trim " " (read-string prompt :initial (or (name-at-point) "")
+                                                   :complete #'complete-symbol-name))))
+    (multiple-value-bind (symbol found) (find-named-symbol name)
+      (unless (and found (fboundp symbol)) (editor-error "There is no function ~A" name))
+      symbol)))
+(define-command toggle-trace ()
+  "Trace a function -- its calls and results are printed with what the code
+prints -- or stop tracing it."
+  (let ((symbol (read-function-name "Trace, or stop tracing: ")))
+    (cond ((member symbol (eval '(trace)))
+           (eval `(untrace ,symbol))
+           (message "~(~S~) is no longer traced" symbol))
+          (t (eval `(trace ,symbol))
+             (message "~(~S~) is traced: its calls appear with the output of what you evaluate" symbol)))))
+(define-command untrace-all () "Stop tracing every function."
+  (eval '(untrace))
+  (message "Nothing is traced"))
+(define-command disassemble-function ()
+  "Show the machine code of a function in the buffer *disassembly*."
+  (let ((symbol (read-function-name "Disassemble: ")))
+    (show-in-help "*disassembly*"
+                  (with-output-to-string (out) (disassemble symbol :stream out)))))
+(define-command undefine-function ()
+  "Make a function or a macro undefined."
+  (let ((symbol (read-function-name "Undefine: ")))
+    (fmakunbound symbol)
+    (message "~(~S~) is no longer defined" symbol)))
+
+;;; ---- the REPL's package
+
+(define-command set-repl-package ()
+  "Put the REPL in a package: by default the one this buffer's code is in."
+  (let* ((names (sort (mapcar (lambda (p) (string-downcase (package-name p))) (list-all-packages))
+                      #'string<))
+         (name (string-trim " " (read-string "REPL package: "
+                                             :initial (string-downcase (package-name (current-package)))
+                                             :complete (lambda (text)
+                                                         (multiple-value-bind (new matches)
+                                                             (funcall (complete-from names) text)
+                                                           (values new (if (rest matches)
+                                                                           (shown-candidates matches 40)
+                                                                           matches)))))))
+         (package (or (find-package (string-upcase name)) (editor-error "There is no package ~A" name))))
+    (setf *repl-package* package)
+    (let ((repl (find-buf "*repl*")))
+      (when repl (let ((*buf* repl)) (repl-new-prompt))))
+    (message "The REPL is in ~A" (package-name package))))

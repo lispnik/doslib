@@ -307,3 +307,75 @@ go to this line's comment, or start one."
         (edit-delete cl cc 1)
         (edit-insert pl pc (if (and (= pl sl) (= pc sc)) ") " ")"))
         (reindent-lines (1+ ol) cl)))))
+
+;;; ---- are the parentheses balanced?
+
+(define-command check-parens ()
+  "Look for a parenthesis with no partner in the buffer, and go to it."
+  (let* ((stack '())
+         (last (1- (nlines)))
+         (in-string
+           (scan-parens 0 last most-positive-fixnum
+                        (lambda (open l c)
+                          (cond (open (push (cons l c) stack))
+                                (stack (pop stack))
+                                (t (goto l c)
+                                   (editor-error "This closing parenthesis has nothing to close")))))))
+    (cond (stack (goto (car (first stack)) (cdr (first stack)))
+                 (editor-error "This parenthesis is never closed~[~:;, nor are ~:*~D before it~]"
+                               (1- (length stack))))
+          (in-string (editor-error "The buffer ends inside a string"))
+          (t (message "The parentheses balance")))))
+
+;;; ---- electric parentheses
+;;;
+;;; M-x electric-pair-mode: ( brings its ), a " brings its partner, typing
+;;; the ) or " that is already there steps over it, and Backspace between
+;;; an empty pair takes both.  In a string or a comment the keys are
+;;; themselves.  (The mode is a handful of keys bound in the Lisp modes'
+;;; keymaps, and taken out again.)
+
+(defvar *electric-pairs* nil "True while M-x electric-pair-mode is on.")
+(defun in-text-p ()
+  "Is point inside a string or a comment?"
+  (let ((line (point-line)) (col (point-col)))
+    (or (scan-parens (safe-start line) line col (lambda (open l c) (declare (ignore open l c))))
+        (> col (code-end line)))))
+(defun in-string-p ()
+  (let ((line (point-line)))
+    (scan-parens (safe-start line) line (point-col) (lambda (open l c) (declare (ignore open l c))))))
+(define-command electric-open () "Insert ( and the ) that closes it."
+  (cond ((or (in-text-p) (escaped-p (point-line) (point-col))) (insert "("))
+        (t (insert "()") (backward-char))))
+(define-command electric-close () "Step over the ) that is here, or insert one."
+  (if (and (not (in-text-p)) (char= (char-at (point-line) (point-col)) #\)))
+      (forward-char)
+      (insert ")")))
+(define-command electric-quote () "Insert a pair of string quotes, or step over the one that ends this string."
+  (cond ((in-string-p)
+         (if (and (char= (char-at (point-line) (point-col)) #\")
+                  (not (and (plusp (point-col)) (char= (char-at (point-line) (1- (point-col))) #\\))))
+             (forward-char)
+             (insert "\"")))
+        ((or (> (point-col) (code-end (point-line))) (escaped-p (point-line) (point-col)))
+         (insert "\""))
+        (t (insert "\"\"") (backward-char))))
+(define-command electric-backspace () "Delete the character before point; an empty pair goes together."
+  (let* ((line (point-line)) (col (point-col))
+         (before (if (plusp col) (char-at line (1- col)) #\Newline))
+         (after (char-at line col)))
+    (when (and (or (and (char= before #\() (char= after #\)))
+                   (and (char= before #\") (char= after #\")))
+               (not (escaped-p line (1- col))))
+      (delete-char))
+    (delete-backward-char)))
+(define-command electric-pair-mode ()
+  "Make ( and \" bring their partners in Lisp buffers and the REPL, or stop doing so."
+  (setf *electric-pairs* (not *electric-pairs*))
+  (dolist (mode '(lisp-mode repl-mode))
+    (dolist (binding '(("(" electric-open) (")" electric-close) ("\"" electric-quote)
+                       ("<backspace>" electric-backspace)))
+      (if *electric-pairs*
+          (bind-key (first binding) (second binding) mode)
+          (remhash (first binding) (mode-map mode)))))
+  (message "Parentheses and quotes now come ~:[one at a time~;in pairs~]" *electric-pairs*))

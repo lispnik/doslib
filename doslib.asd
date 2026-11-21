@@ -165,6 +165,7 @@
                (:file "files")
                (:file "dired")
                (:file "windows")
+               (:file "inspect")
                (:file "help")
                (:file "macros")
                (:file "keys")

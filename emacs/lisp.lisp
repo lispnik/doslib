@@ -311,13 +311,23 @@ buffer that has a file, if there is such a package."
   "Evaluate the Lisp expressions between point and the mark."
   (multiple-value-bind (l1 c1 l2 c2) (region-bounds)
     (in-buffer-package (eval-and-show (text-between l1 c1 l2 c2)))))
+(defun defvar-again (text)
+  "TEXT with a (defvar name value ...) at its start made a DEFPARAMETER: evaluating
+a DEFVAR on purpose is asking for the new value."
+  (if (and (> (length text) 8) (string-equal "(defvar " text :end2 8)
+           (ignore-errors (> (length (let ((*package* (current-package)) (*read-eval* nil))
+                                       (read-from-string text)))
+                             2)))
+      (concatenate 'string "(defparameter " (subseq text 8))
+      text))
 (define-command eval-defun ()
-  "Evaluate the top-level form around point."
+  "Evaluate the top-level form around point.  A DEFVAR gives its variable the value again."
   (flet ((top-p (i) (let ((text (line-text i))) (and (plusp (length text)) (char= (char text 0) #\()))))
     (let* ((start (or (loop for i from (point-line) downto 0 when (top-p i) return i)
                       (editor-error "No top-level form here")))
            (end (or (find-close-paren start 0) (editor-error "Unbalanced parentheses"))))
-      (in-buffer-package (eval-and-show (text-between start 0 (car end) (cdr end)))))))
+      (in-buffer-package
+        (eval-and-show (defvar-again (text-between start 0 (car end) (cdr end))))))))
 (define-command eval-buffer () "Evaluate the whole buffer." (eval-and-show (buffer-string)))
 (define-command eval-expression () "Read a Lisp expression in the minibuffer and evaluate it."
   (eval-and-show (read-string "Eval: ")))

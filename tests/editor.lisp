@@ -162,6 +162,57 @@
   (with-text ((lines "(in-package #:doslib)" "(foo)") 1 0)
     (is (eq *repl-package* (current-package)))))
 
+(deftest editor-colours
+  ;; a string or a #| |# comment that runs on over the lines
+  (is= :string (lisp-attributes "(defun f () \"one"))
+  (fill *attrs* 7)
+  (is (null (lisp-attributes "two\" (x)" :string)))
+  (is= 14 (aref *attrs* 3))
+  (is= 7 (aref *attrs* 5))
+  (is= 1 (lisp-attributes "(a) #| a comment"))
+  (is= 1 (lisp-attributes "more of it" 1))
+  (is (null (lisp-attributes "the end |# (x)" 1)))
+  (with-text ((lines "(defun f ()" "  \"doc" "   more\"" "  1)"))
+    (is= :string (lisp-start-state *buf* 2))
+    (is (null (lisp-start-state *buf* 3)))))
+
+(deftest editor-check-parens
+  (with-text ("(a (b)")
+    (is (null (ignore-errors (check-parens) t)))
+    (is= '(0 0) (at)))
+  (with-text ("(a) b)")
+    (is (null (ignore-errors (check-parens) t)))
+    (is= '(0 5) (at)))
+  (with-text ("(a \")\" #\\( b)")
+    (check-parens)
+    (is (search "balance" *message*))))
+
+(deftest editor-electric
+  (with-text ("")
+    (electric-open) (is= "()" (buffer-string)) (is= '(0 1) (at))
+    (electric-quote) (is= "(\"\")" (buffer-string)) (is= '(0 2) (at))
+    (insert "a(")                                       ; in a string the keys are themselves
+    (electric-open) (is= "(\"a((\")" (buffer-string))
+    (electric-quote) (is= '(0 6) (at))                  ; over the quote that was there
+    (electric-close) (is= "(\"a((\")" (buffer-string)) (is= '(0 7) (at)))
+  (with-text ("()" 0 1)
+    (electric-backspace)
+    (is= "" (buffer-string))))
+
+(deftest editor-definitions
+  (with-text ((lines "(defun alpha (x) x)" "" "(defvar *beta* 1)" "(defstruct (gamma (:type list)) a)"))
+    (is= '(("alpha" . 0) ("*beta*" . 2) ("gamma" . 3)) (buffer-definitions)))
+  (is= "(defparameter *x* 2)" (doslib-emacs::defvar-again "(defvar *x* 2)"))
+  (is= "(defvar *x*)" (doslib-emacs::defvar-again "(defvar *x*)")))
+
+(deftest editor-inspector
+  (multiple-value-bind (description parts count) (object-parts (list 1 "two"))
+    (is (search "list" description))
+    (is= 2 count)
+    (is= '(("0" . 1) ("1" . "two")) parts))
+  (is= "\"abc\"" (brief "abc"))
+  (is= 10 (length (brief (make-string 50 :initial-element #\a) 10))))
+
 (defun run-tests (&optional (file "ED.TXT"))
   "Run the tests; one line for each goes to FILE.  Returns how many failed."
   (let ((failed 0))

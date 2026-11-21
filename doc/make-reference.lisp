@@ -30,7 +30,7 @@
     ("The examples" "DOSLIB-EXAMPLES" "examples/package.lisp" "examples/" ("package"))
     ("The editor" "DOSLIB-EMACS" "emacs/package.lisp" "emacs/"
      ("buffers" "screen" "keyboard" "keys" "keymaps" "minibuffer" "movement" "editing" "search"
-      "files" "windows" "help" "macros" "lisp" "sexp" "lisptools" "repl" "dired" "main"))))
+      "files" "windows" "help" "macros" "lisp" "sexp" "lisptools" "inspect" "repl" "dired" "main"))))
 
 (defun read-forms (file)
   (with-open-file (in file)

@@ -825,8 +825,13 @@ Insert STRING at point.
 
 **`*highlight-words*`** — Variable  
 
-**`lisp-attributes`** `text` — Function  
-Fill *ATTRS* with a colour for each character of a line of Lisp.
+**`ensure-attrs`** `n` — Function  
+
+**`lisp-attributes`** `text &optional state` — Function  
+Fill *ATTRS* with a colour for each character of a line of Lisp.  STATE is what the line starts inside -- :STRING, a number (how deep in #| |# comments) or NIL -- and what the line ends inside is returned.
+
+**`lisp-start-state`** `b top` — Function  
+What line TOP of the Lisp buffer B starts inside: see LISP-ATTRIBUTES.
 
 **`region-bounds`** `&optional (b *buf*)` — Function  
 The mark and point in order: L1 C1 L2 C2.
@@ -1191,7 +1196,7 @@ Evaluate the Lisp expression before point; with C-u, insert the result as well.
 Evaluate the Lisp expressions between point and the mark.
 
 **`eval-defun`** `` — Command  
-Evaluate the top-level form around point.
+Evaluate the top-level form around point.  A DEFVAR gives its variable the value again.
 
 **`eval-buffer`** `` — Command  
 Evaluate the whole buffer.
@@ -1308,6 +1313,27 @@ Move this list's closing parenthesis past the expression after it: (a b) c becom
 **`barf-sexp`** `` — Command  
 Move this list's closing parenthesis back before its last expression: (a b c) becomes (a b) c.
 
+**`check-parens`** `` — Command  
+Look for a parenthesis with no partner in the buffer, and go to it.
+
+**`*electric-pairs*`** — Variable  
+True while M-x electric-pair-mode is on.
+
+**`electric-open`** `` — Command  
+Insert ( and the ) that closes it.
+
+**`electric-close`** `` — Command  
+Step over the ) that is here, or insert one.
+
+**`electric-quote`** `` — Command  
+Insert a pair of string quotes, or step over the one that ends this string.
+
+**`electric-backspace`** `` — Command  
+Delete the character before point; an empty pair goes together.
+
+**`electric-pair-mode`** `` — Command  
+Make ( and " bring their partners in Lisp buffers and the REPL, or stop doing so.
+
 ### `emacs/lisptools.lisp`: Lisp from the running image: completion, arguments, documentation,
 
 **`find-named-symbol`** `name` — Function  
@@ -1352,11 +1378,69 @@ Put TEXT in the buffer NAME without showing it.
 **`compile-and-load-file`** `` — Command  
 Save the buffer, compile its file and load the result.  What the compiler said is in the buffer *compilation*.
 
+**`definition-name`** `text` — Function  
+The name the line TEXT begins a definition of, or NIL: (defun name, (defstruct (name, (defmethod name, (define-command name ...
+
+**`buffer-definitions`** `&optional (b *buf*)` — Function  
+The definitions in buffer B: a list of (name . line), in order.
+
+**`goto-definition-in-buffer`** `` — Command  
+Go to one of this buffer's definitions, by name (TAB completes; M-, comes back).
+
+**`toggle-trace`** `` — Command  
+Trace a function -- its calls and results are printed with what the code prints -- or stop tracing it.
+
+**`untrace-all`** `` — Command  
+Stop tracing every function.
+
+**`disassemble-function`** `` — Command  
+Show the machine code of a function in the buffer *disassembly*.
+
+**`undefine-function`** `` — Command  
+Make a function or a macro undefined.
+
+**`set-repl-package`** `` — Command  
+Put the REPL in a package: by default the one this buffer's code is in.
+
+### `emacs/inspect.lisp`: The inspector: a Lisp object, part by part
+
+**`*inspector-object*`** — Variable  
+The object the inspector is showing.
+
+**`brief`** `object &optional (width 60)` — Function  
+OBJECT printed on one line, cut to WIDTH characters.
+
+**`object-parts`** `object` — Function  
+What OBJECT is, in a line, and its parts: a list of (label . value).
+
+**`inspect-object`** `object` — Function  
+Open the inspector on OBJECT.
+
+**`inspect-expression`** `` — Command  
+Evaluate an expression -- by default the one at point -- and inspect its value.
+
+**`inspector-part`** `` — Command  
+Inspect the part on this line.
+
+**`inspector-back`** `` — Command  
+Go back to the object this one was reached from.
+
+**`inspector-refresh`** `` — Command  
+Look at the object again.
+
+**`inspector-describe`** `` — Command  
+Show what DESCRIBE says about the object.
+
+**`inspector-quit`** `` — Command  
+Leave the inspector.
+
 ### `emacs/repl.lisp`: The REPL buffer
 
 **`repl-buffer`** `` — Function  
 
 **`repl-emit`** `string` — Function  
+
+**`repl-prompt-text`** `` — Function  
 
 **`repl-prompt`** `` — Function  
 
@@ -1377,6 +1461,15 @@ Recall the next input.
 
 **`repl-beginning-of-line`** `` — Command  
 Move to the start of the input, or of the line.
+
+**`repl-new-prompt`** `` — Function  
+Write the prompt on the input line again: the REPL's package has changed.
+
+**`repl-clear`** `` — Command  
+Empty the REPL buffer and start again at a prompt.
+
+**`repl-search-history`** `` — Command  
+Recall the most recent input that contains some text.
 
 ### `emacs/dired.lisp`: Dired: a directory as a buffer.  Each line is a file; keys act on it.
 

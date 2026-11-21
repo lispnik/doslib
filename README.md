@@ -179,6 +179,16 @@ Ctrl key does the same, for a host that keeps Ctrl-Alt to itself.
 | `C-x C-e`, `C-c C-c`, `C-c C-r`, `C-c C-b` | Evaluate the expression before point, the top-level form, the region, the buffer |
 | `C-u C-x C-e` | Evaluate the expression before point and insert the result |
 | `C-c C-k` | Save, compile and load the file; what the compiler said is in `*compilation*` |
+| `C-M-x` (and `C-c C-c`) | Evaluate the top-level form; a `defvar` gives its variable the value again |
+| `C-c I` | The inspector: evaluate an expression and look at the value part by part (`RET` into a part, `l` back, `d` describe, `q` leave) |
+| `C-c i` | Go to one of this buffer's definitions by name, with completion |
+| `C-c C-t`, `C-c M-d`, `C-c C-u` | Trace or untrace a function; disassemble one; undefine one |
+| `C-c M-p`, `C-c M-o` | Put the REPL in this buffer's package; empty the REPL |
+| `M-r` in the REPL | Recall the most recent input containing some text |
+| `M-x check-parens` | Go to a parenthesis that has no partner |
+| `M-x electric-pair-mode` | `(` and `"` bring their partners; Backspace takes an empty pair |
+
+Strings and `#| |#` comments are coloured across the lines they run over.
 
 Code in a file is read in the package of the nearest `(in-package ...)`
 above it; `*scratch*` and the REPL share the REPL's package.
