@@ -150,8 +150,8 @@ starts inside."
 ;;; right one for text that is whole, and is used when the buffer ends
 ;;; outside any string or comment.  When it does not -- a quote has been
 ;;; typed and its partner has not -- the strict reading would turn all the
-;;; code below inside out, so the loose one is used until the text is whole
-;;; again.
+;;; code below inside out, so the loose one is used from the form with the
+;;; lone quote in it onwards, until the text is whole again.
 ;;;
 ;;; The answer for each line is kept with the line it was worked out from;
 ;;; a change makes new strings of the lines it touches, so what is
@@ -186,8 +186,23 @@ deep in #| |# comments) or NIL -- or NIL if B is not a Lisp file."
                        (let ((same (eql s l)))
                          (setf s (lex-line text s)
                                l (if same s (lex-line text l))))))
-            (setf (fourth cache) s)))   ; what the buffer ends inside, read strictly
-        (if (fourth cache) loose strict)))))
+            ;; S is what the buffer ends inside, read strictly.  If that is
+            ;; something, a quote or a bar is missing -- and it is missing
+            ;; in or after the last form the strict reading arrives at
+            ;; cleanly.  So the strict reading holds up to that form, and
+            ;; the loose one takes over from it.
+            (setf (fourth cache)
+                  (let ((from (and s (loop for i from (1- n) downto 0
+                                           for text = (aref seen i)
+                                           when (and (null (aref strict i)) (plusp (length text))
+                                                     (char= (char text 0) #\())
+                                             return i))))
+                    (cond ((null s) strict)
+                          ((or (null from) (zerop from)) loose)
+                          (t (let ((mixed (subseq loose 0 n)))
+                               (replace mixed strict :end2 from)
+                               mixed)))))))
+        (or (fourth cache) strict)))))
 (defun line-start-state (line &optional (b *buf*))
   "What line LINE of B starts inside: :STRING, a number (how deep in #| |#
 comments) or NIL.  Always NIL in a buffer that is not a Lisp file."

@@ -28,7 +28,7 @@ FILES = {
     'T4.TXT': 'one\ntwo\n',
     'T6.LSP': '(list (alpha beta) gamma)\n',
     'T7.LSP': ('(in-package #:cl-user)\n(defun seven-up (n) (+ n 7))\n(defmacro twice (x) `(progn ,x ,x))\n'
-               '(defun caller ()\n  (twice (seven-up 1)))\n'),
+               '(defun caller ()\n  (twice (seven-up 1)))\n(defun both () (twice (twice 5)))\n'),
     # the editor's own tests, loaded into it by the test emacs-lisp-edit
     'ED.LSP': open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'editor.lisp')).read(),
     'T5.TXT': ''.join('line %02d of the file for the mouse test: long enough to click in\n' % n for n in range(1, 21)),
@@ -402,7 +402,7 @@ def all_cases():
         # package, emptying it, and finding an old input
         emacs('emacs-lisp-tools', 'T7.LSP', ('see', 'seven-up'),
               ('key', 'ctrl-c', 'ctrl-k'), ('see', 'compiled and loaded', 120),
-              ('key', 'ctrl-c', 'i'), ('see', 'Go to definition (3 here)'), ('type', 'caller'), ('key', 'ret'),
+              ('key', 'ctrl-c', 'i'), ('see', 'Go to definition (4 here)'), ('type', 'caller'), ('key', 'ret'),
               ('see', 'caller, line 4'),
               ('key', 'down', 'right', 'right'), ('key', 'ctrl-c', 'ret'),
               ('see', '(progn (seven-up 1) (seven-up 1))'), *to_buffer('T7.LSP'),
@@ -413,6 +413,14 @@ def all_cases():
               ('see', '(more in *output*)'), *to_buffer('*output*'), ('see', 'SEVEN-UP 1)'), *to_buffer('T7.LSP'),
               ('key', 'ctrl-c', 'ctrl-t'), ('see', 'Trace, or stop tracing'), ('type', 'seven-up'), ('key', 'ret'),
               ('see', 'seven-up is no longer traced'),
+              ('key', 'ctrl-c', 'ctrl-t'), ('see', 'Trace, or stop tracing'), ('type', 'seven-up'), ('key', 'ret'),
+              ('see', 'seven-up is traced'), *meta_x('untrace-all'), ('see', 'Nothing is traced'),
+              # (so asking again traces it, where it would have stopped tracing it)
+              ('key', 'ctrl-c', 'ctrl-t'), ('see', 'Trace, or stop tracing'), ('type', 'seven-up'), ('key', 'ret'),
+              ('see', 'seven-up is traced'), *meta_x('untrace-all'), ('see', 'Nothing is traced'),
+              # everything inside expanded too: the last expression of the file
+              ('key', 'shift-alt-dot', 'left', 'left'), ('key', 'ctrl-c', 'alt-m'),
+              ('see', '(progn (progn 5 5) (progn 5 5))'), *to_buffer('T7.LSP'),
               ('key', 'ctrl-c', 'alt-d'), ('see', 'Disassemble:'), ('type', 'seven-up'), ('key', 'ret'),
               ('see', 'disassembly for'), *to_buffer('T7.LSP'),
               ('key', 'ctrl-c', 'ctrl-d', 'd'), ('see', 'Describe symbol:'), ('type', 'twice'), ('key', 'ret'),

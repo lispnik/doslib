@@ -197,6 +197,17 @@
     (is= :string (line-start-state 2))
     (is= '(3 . 0) (find-open-paren 3 14))
     (is= '(3 . 9) (find-open-paren 3 11)))
+  ;; a lone bar or quote upsets its own form and nothing above it: the
+  ;; string up there with a parenthesis in the first column is still a string
+  (dolist (lone '("  (list |oops 1))" "  (list \"oops 1))"))
+    (with-text ((lines "(defun f ()" "  \"A docstring:" "(not a form) here\"" "  1)"
+                       "(defun g ()" lone "(defun h () 2)"))
+      (is (not (top-level-line-p 2)))
+      (is= :string (line-start-state 2))
+      (is (null (line-start-state 4)))
+      (is (top-level-line-p 6))
+      (is (null (line-start-state 6)))
+      (is= '(("f" . 0) ("g" . 4) ("h" . 6)) (buffer-definitions))))
   (with-text ((lines "#| a comment" "(not code)" "|#" "(code)"))
     (is (not (top-level-line-p 1)))
     (is (top-level-line-p 3)))
