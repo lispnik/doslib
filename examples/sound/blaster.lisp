@@ -133,6 +133,30 @@ NIL if there is no card that can play it."
   '((7 2) (7 2) (8 2) (10 2) (10 2) (8 2) (7 2) (5 2) (3 2) (3 2) (5 2) (7 2) (7 3) (5 1) (5 4)
     (7 2) (7 2) (8 2) (10 2) (10 2) (8 2) (7 2) (5 2) (3 2) (3 2) (5 2) (7 2) (5 3) (3 1) (3 4)))
 
+(defun add-note (mix start samples frequency rate gain)
+  "Add a string plucked at FREQUENCY to MIX, SAMPLES long from START: three
+harmonics, dying away.  (With the types said, so that the arithmetic is the
+processor's own: a tune is some millions of sines.)"
+  (declare (type (simple-array single-float (*)) mix) (type fixnum start samples rate)
+           (type single-float frequency gain))
+  (let ((step (/ (* 2 (float pi 1.0) frequency) rate))
+        (decay (exp (/ -4.0 rate)))                     ; the envelope is e^(-4t)
+        (envelope gain))
+    (declare (type single-float step decay envelope))
+    (dotimes (i samples mix)
+      (let ((phase (* step i)))
+        (declare (type (single-float 0.0 1.0e9) phase))
+        (incf (aref mix (+ start i))
+              (* envelope (+ (* 0.6 (sin phase)) (* 0.25 (sin (* 2 phase)))
+                             (* 0.15 (sin (* 3 phase)))))))
+      (setf envelope (* envelope decay)))))
+
+(defun peak-of (mix)
+  (declare (type (simple-array single-float (*)) mix))
+  (let ((peak 0.001))
+    (declare (type single-float peak))
+    (dotimes (i (length mix) peak) (setf peak (max peak (abs (aref mix i)))))))
+
 (defun synthesize (&key (rate 11025) (tempo 132))
   "The tune as a vector of samples: each note a string plucked, two octaves at once."
   (let* ((eighth (floor (* rate 30) tempo))
@@ -141,19 +165,14 @@ NIL if there is no card that can play it."
          (start 0))
     (loop for (note eighths) in *tune*
           do (when note
-               (let* ((frequency (* 220.0 (expt 2.0 (/ note 12.0))))
-                      (step (/ (* 2 (float pi 1.0) frequency) rate))
-                      (samples (min (- length start) (* 3 eighth (max 2 eighths)))))
-                 (dotimes (i samples)
-                   (let ((envelope (exp (/ (* -4.0 i) rate))) (phase (* step i)))
-                     (incf (aref mix (+ start i))
-                           (* envelope (+ (* 0.6 (sin phase)) (* 0.25 (sin (* 2 phase)))
-                                          (* 0.15 (sin (* 3 phase))))))))))
+               (add-note mix start (min (- length start) (* 3 eighth (max 2 eighths)))
+                         (* 220.0 (expt 2.0 (/ note 12.0))) rate 1.0))
              (incf start (* eighth eighths)))
-    (let ((peak (max 0.001 (reduce #'max mix :key #'abs)))
+    (let ((scale (/ 120.0 (peak-of mix)))
           (samples (make-array length :element-type '(unsigned-byte 8))))
+      (declare (type single-float scale))
       (dotimes (i length samples)
-        (setf (aref samples i) (+ 128 (round (* 120 (/ (aref mix i) peak)))))))))
+        (setf (aref samples i) (+ 128 (the (integer -120 120) (round (* scale (aref mix i))))))))))
 
 ;;; ---- and WAV files
 (defun read-wav (file)
@@ -198,23 +217,19 @@ NIL if there is no card that can play it."
          (start 0) (count 0))
     (loop for (note eighths) in *tune*
           do (when note
-               (let* ((frequency (* 220.0 (expt 2.0 (/ note 12.0))))
-                      (step (/ (* 2 (float pi 1.0) frequency) rate))
-                      (samples (min (- length start) (* 3 eighth (max 2 eighths))))
-                      (pan (/ (mod count 5) 4.0)))              ; 0 is left, 1 is right
-                 (dotimes (i samples)
-                   (let* ((envelope (exp (/ (* -4.0 i) rate))) (phase (* step i))
-                          (value (* envelope (+ (* 0.6 (sin phase)) (* 0.25 (sin (* 2 phase)))
-                                                (* 0.15 (sin (* 3 phase)))))))
-                     (incf (aref left (+ start i)) (* (- 1.0 pan) value))
-                     (incf (aref right (+ start i)) (* pan value))))
+               (let ((frequency (* 220.0 (expt 2.0 (/ note 12.0))))
+                     (samples (min (- length start) (* 3 eighth (max 2 eighths))))
+                     (pan (/ (mod count 5) 4.0)))               ; 0 is left, 1 is right
+                 (add-note left start samples frequency rate (- 1.0 pan))
+                 (add-note right start samples frequency rate pan)
                  (incf count)))
              (incf start (* eighth eighths)))
-    (let ((peak (max 0.001 (reduce #'max left :key #'abs) (reduce #'max right :key #'abs)))
+    (let ((scale (/ 30000.0 (max (peak-of left) (peak-of right))))
           (samples (make-array (* 2 length) :element-type '(signed-byte 16))))
+      (declare (type single-float scale) (type (simple-array single-float (*)) left right))
       (dotimes (i length samples)
-        (setf (aref samples (* 2 i)) (round (* 30000 (/ (aref left i) peak)))
-              (aref samples (1+ (* 2 i))) (round (* 30000 (/ (aref right i) peak))))))))
+        (setf (aref samples (* 2 i)) (the (integer -30000 30000) (round (* scale (aref left i))))
+              (aref samples (1+ (* 2 i))) (the (integer -30000 30000) (round (* scale (aref right i)))))))))
 
 (defun read-wav-16 (file)
   "The samples of a 16-bit PCM WAV file as they are: the samples, the rate
