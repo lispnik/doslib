@@ -13,6 +13,7 @@
 and whenever a core saved with the library in it starts; a program saved
 with its own :TOPLEVEL function calls it first."
   (incf *session*)
+  (setf *code-room* nil)                ; machine code: the old process's memory is gone
   (clrhash *stubs*)
   (setf *regs* (alien-sap (make-alien (unsigned 32) 8)))
   (setf *inb* (machine-code #x8B #x54 #x24 4 #x31 #xC0 #xEC #xC3))

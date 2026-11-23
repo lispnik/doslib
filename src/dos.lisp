@@ -11,7 +11,7 @@
 (defvar *rm* nil "The DPMI real-mode call structure REAL-INT passes the registers in.")
 (defun real-int (n &key (ax 0) (bx 0) (cx 0) (dx 0) (si 0) (di 0) (es 0) (ds 0))
   "Real-mode interrupt N.  Returns AX BX CX DX ES DS FLAGS (16-bit values)."
-  (dotimes (i 64) (setf (sap-ref-8 *rm* i) 0))
+  (dotimes (i 16) (setf (sap-ref-32 *rm* (* 4 i)) 0))
   (setf (sap-ref-32 *rm* #x1C) ax (sap-ref-32 *rm* #x10) bx
         (sap-ref-32 *rm* #x18) cx (sap-ref-32 *rm* #x14) dx
         (sap-ref-32 *rm* 4) si (sap-ref-32 *rm* 0) di
@@ -26,7 +26,7 @@
 (defun real-call (segment offset &key (ax 0) (bx 0) (cx 0) (dx 0) (si 0) (di 0) (es 0) (ds 0))
   "Call the real-mode routine at SEGMENT:OFFSET, which returns with a far
 return.  Returns AX BX CX DX ES DS FLAGS (16-bit values), as REAL-INT does."
-  (dotimes (i 64) (setf (sap-ref-8 *rm* i) 0))
+  (dotimes (i 16) (setf (sap-ref-32 *rm* (* 4 i)) 0))
   (setf (sap-ref-32 *rm* #x1C) ax (sap-ref-32 *rm* #x10) bx
         (sap-ref-32 *rm* #x18) cx (sap-ref-32 *rm* #x14) dx
         (sap-ref-32 *rm* 4) si (sap-ref-32 *rm* 0) di

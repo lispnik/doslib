@@ -4,13 +4,29 @@
 
 (in-package #:doslib)
 
+;;; Machine code is kept in pages of its own, away from anything that is
+;;; written.  A write to a page that holds code looks like a program
+;;; changing itself, and processors -- and emulators more so -- stop to
+;;; make sure of what they are running: under QEMU a write to such a page
+;;; takes 0.8 us, against 0.01 us elsewhere.  The registers for INT86 used
+;;; to be next to its stubs in memory.
+(defvar *code-room* nil "Where the next machine code goes: (address . bytes left).  DOSLIB-INIT clears it.")
 (defun machine-code (&rest bytes)
   "Put BYTES in memory as machine code.  Returns its address (a system area
 pointer), to be called with ALIEN-FUNCALL.  The memory is the process's, not
 the Lisp image's: see SAVED-CODE."
-  (let ((p (alien-sap (make-alien (unsigned 8) (length bytes)))))
-    (loop for b in bytes for i from 0 do (setf (sap-ref-8 p i) b))
-    p))
+  (let ((count (length bytes)))
+    (when (or (null *code-room*) (< (cdr *code-room*) count))
+      ;; whole pages, with a page to spare at each end for whatever else
+      ;; the allocator has put, or will put, there
+      (let* ((size (* 4096 (max 2 (ceiling count 4096))))
+             (memory (sap-int (alien-sap (make-alien (unsigned 8) (+ size 8192))))))
+        (setf *code-room* (cons (* 4096 (ceiling memory 4096)) size))))
+    (let ((p (int-sap (car *code-room*))))
+      (loop for b in bytes for i from 0 do (setf (sap-ref-8 p i) b))
+      (incf (car *code-room*) count)
+      (decf (cdr *code-room*) count)
+      p)))
 
 ;;; void stub(unsigned regs[6]): load EAX EBX ECX EDX EDI, INT n, store them
 ;;; back along with EFLAGS.

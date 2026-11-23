@@ -191,7 +191,7 @@ def all_cases():
                 ('see', 'PCI functions found'), ('see', 'Interrupt lines'), leave=None),
         example('pciscan-file', ('see', 'is written to PCISCAN.TXT'), example='pciscan', args='"file"',
                 leave=None),
-        text('ports', 'keyboard answered FAh', 'LPT1 is at 378h', 'printed 78 characters'),
+        text('ports', 'keyboard answered FAh', 'LPT1 is at 378h', 'characters, one strobe pulse each'),
         text('printer', 'Press a key.', leave=('ret',)),
         example('printer-absent', ('see', 'there is no such printer port'), ('key', '3'), ('see', 'Press a key.'),
                 example='printer', args=':printer 1', leave=('ret',)),
