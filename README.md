@@ -93,6 +93,16 @@ running.  This needs the DOS port's runtime of November 2026 or later
 
 ## The examples
 
+**[Pictures of the examples](screenshots/README.md)** — the display of
+the DOS machine while each one runs.
+
+[<img src="screenshots/plasma.png" width="150">](screenshots/README.md)
+[<img src="screenshots/raycast.png" width="150">](screenshots/README.md)
+[<img src="screenshots/mandel.png" width="150">](screenshots/README.md)
+[<img src="screenshots/copper.png" width="150">](screenshots/README.md)
+[<img src="screenshots/modplay.png" width="150">](screenshots/README.md)
+[<img src="screenshots/windows.png" width="150">](screenshots/README.md)
+
 ```lisp
 (asdf:load-system :doslib/examples)
 (doslib-examples:list-examples)             ; what there is
@@ -315,6 +325,9 @@ The tests are listed in `tests/cases.py`; `tests/run.py --look NAME` runs
 an example and prints what it puts on the screen, which is how to start
 a test for a new one.  The screen of a test that fails is kept in the
 launcher's `vm/test` directory.  It needs QEMU, mtools and Python 3.
+
+`tests/shots.py` takes the pictures in [screenshots/](screenshots/README.md):
+it runs each example as its test does and saves the display.
 
 ## Quicklisp
 
