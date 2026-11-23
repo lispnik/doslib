@@ -18,6 +18,7 @@
 #   ./run-dos.sh utm        make vm/SBCL-DOS.utm, the same machine for the UTM
 #                           app (https://mac.getutm.app), and open it there
 #   ./run-dos.sh utm update | build | put FILE.. | get FILE.. | ls | setup
+#   ./run-dos.sh utm cdrom DISC.ISO   put a disc in the UTM machine's drive
 #   ./run-dos.sh macbox     make the same machine for 86Box, as MacBox
 #                           (https://github.com/Moonif/MacBox) keeps them:
 #                           ~/MacBox/SBCL on FreeDOS, a Pentium II with a VGA
@@ -61,6 +62,9 @@
 #                   the SBCL source tree, built for DOS with make-dos.sh
 #                   and make-dos-contrib.sh asdf sb-bsd-sockets
 # Extra QEMU options go in RUN_DOS_QEMU_OPTIONS.
+# Every machine has a CD-ROM drive, E: in DOS.  RUN_DOS_CDROM=disc.iso puts
+# a disc in QEMU's, "./run-dos.sh utm cdrom disc.iso" in the UTM machine's,
+# and 86Box's Media menu in its own.
 set -e
 here=`cd "\`dirname "$0"\`" && pwd`
 tools=${SBCL_DOS_TOOLS:-`cd "$here/.." && pwd`}
@@ -119,6 +123,7 @@ make_boot() {
     printf '%s\r\n' '@echo off' 'SET DOSDIR=\FREEDOS' 'SET PATH=\FREEDOS\BIN;D:\SBCL' \
         'SET HOME=D:\HOME' 'SET WATTCP.CFG=D:\SBCL' \
         'LBACACHE BUF 40000 > NUL' \
+        'SHSUCDX /D:SBCLCD01 /QQ > NUL' \
         'DOSLFN > NUL' 'D:' 'CD \SBCL' 'HDPMI32 -r > NUL' 'PCNTPK INT=0x60 > NUL' \
         'IF EXIST CTMOUSE.EXE CTMOUSE > NUL' \
         'IF EXIST BUILD.BAT GOTO build' 'CLS' \
@@ -126,6 +131,14 @@ make_boot() {
         'GOTO end' ':build' 'CALL BUILD.BAT' 'DEL BUILD.BAT' 'C:' 'FDAPM POWEROFF' ':end' \
         > "$vm/fdauto.bat"
     mcopy -o "$vm/fdauto.bat" c:/FDAUTO.BAT
+    # A CD-ROM drive, when the machine has one, is E: -- UDVD2 is the driver
+    # for the drive, SHSUCDX (above, and before DOSLFN, which then gives the
+    # disc's long names) makes it a drive letter.  Without a drive neither
+    # stays in memory.
+    mtype c:/FDCONFIG.SYS | tr -d '\r' \
+        | awk '{print} /HIMEMX/ {print "DEVICE=\\FREEDOS\\BIN\\UDVD2.SYS /D:SBCLCD01"}' \
+        | sed 's/$/\r/' > "$vm/fdconfig.sys"
+    mcopy -o "$vm/fdconfig.sys" c:/FDCONFIG.SYS
     mdel c:/SETUP.BAT 2>/dev/null || true
 }
 make_data() {
@@ -307,9 +320,25 @@ EOF
     fi
 }
 
+# The UTM machine's CD-ROM drive.  UTM gives every IDE drive a bus of its
+# own, and a PC has two, which the disks take: so the drive is put second
+# on the second bus with QEMU's own arguments (see the description below),
+# and its disc is a file in the bundle, Data/cdrom.iso, that
+# "./run-dos.sh utm cdrom DISC.ISO" replaces.  To begin with it is a disc
+# with a note on it.
+make_utm_disc() {
+    [ -f "$bundle/Data/cdrom.iso" ] && return 0
+    mkdir -p "$vm/disc.tmp"
+    printf 'The disc of the SBCL on FreeDOS machine.\r\nPut another in:  ./run-dos.sh utm cdrom DISC.ISO\r\n' \
+        > "$vm/disc.tmp/README.TXT"
+    hdiutil makehybrid -quiet -iso -joliet -default-volume-name NODISC -o "$bundle/Data/cdrom.iso" "$vm/disc.tmp"
+    rm -f "$vm/disc.tmp/README.TXT"; rmdir "$vm/disc.tmp"
+}
+
 # The description of the machine that UTM reads.  Written once, so that the
 # machine keeps its identity in UTM.
 make_utm_config() {
+    make_utm_disc
     [ -f "$bundle/config.plist" ] && return
     cat > "$bundle/config.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -340,7 +369,13 @@ make_utm_config() {
   </dict>
   <key>QEMU</key>
   <dict>
-    <key>AdditionalArguments</key><array/>
+    <key>AdditionalArguments</key>
+    <array>
+      <string>-drive</string>
+      <string>if=none,id=sbclcd,media=cdrom,readonly=on,format=raw,file=$bundle/Data/cdrom.iso</string>
+      <string>-device</string>
+      <string>ide-cd,bus=ide.1,unit=1,drive=sbclcd</string>
+    </array>
     <key>BalloonDevice</key><false/>
     <key>DebugLog</key><false/>
     <key>Hypervisor</key><false/>
@@ -485,6 +520,9 @@ hdd_02_parameters = 63, 16, $((disk_mb * 2048 / 1008)), 0, ide
 [Floppy and CD-ROM drives]
 fdd_01_type = 35_2hd
 fdd_02_type = none
+cdrom_01_parameters = 1, atapi
+cdrom_01_ide_channel = 1:0
+cdrom_01_speed = 24
 EOF
 }
 
@@ -528,6 +566,14 @@ case "$command" in
         make_utm_config
         echo "opening $bundle in UTM; press its play button to start the machine"
         open "$bundle" ;;
+    cdrom)
+        [ -n "$utm" ] || { echo "run-dos.sh: cdrom is for the UTM machine (QEMU: RUN_DOS_CDROM=DISC.ISO; 86Box: its Media menu)" >&2; exit 2; }
+        [ -f "$2" ] || { echo "usage: $0 utm cdrom DISC.ISO" >&2; exit 2; }
+        if [ "`utmctl status 'SBCL on FreeDOS' 2>/dev/null`" = started ]; then
+            echo "run-dos.sh: shut the DOS machine down first" >&2; exit 1
+        fi
+        cp "$2" "$bundle/Data/cdrom.iso"
+        echo "$2 is the disc in the UTM machine's drive, E:" ;;
     setup)
         need_stopped; make_boot; make_data; copy_files
         echo "now run:  $0 ${utm:+utm }${macbox:+macbox }build" ;;
@@ -557,7 +603,7 @@ case "$command" in
             -drive file="$boot",format=raw,if=ide,index=0 \
             -drive file="$data",format=raw,if=ide,index=1 \
             -nic user,model=pcnet,hostfwd=tcp:127.0.0.1:$web_port-:8080,hostfwd=tcp:127.0.0.1:$repl_port-:2323 \
-            $sound $RUN_DOS_QEMU_OPTIONS ;;
+            ${RUN_DOS_CDROM:+-cdrom "$RUN_DOS_CDROM"} $sound $RUN_DOS_QEMU_OPTIONS ;;
     *)
-        sed -n "2,56p" "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+        sed -n "2,60p" "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

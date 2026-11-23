@@ -255,7 +255,8 @@ def all_cases():
         text('xms', 'every byte right', 'EMS'),
         # hardware the test machine does not have: each says so
         text('joystick', 'No joystick'),
-        text('cdrom', 'No CD-ROM'),
+        # (the test machine has a drive, and no disc in it)
+        text('cdrom', 'CD-ROM extensions', 'no disc in the drive'),
         # the debugger: run two routines to their ends, a step at a time underneath
         example('step', ('see', 'gcd:'), ('key', 'spc', 'spc'), ('see', '2 instructions done'),
                 ('key', 'r'), ('see', 'EAX is 21'), ('key', 'n', 'n'), ('see', 'fact:'),
@@ -301,7 +302,8 @@ def all_cases():
         text('vop', 'in line (a VOP)', 'BSWAP EAX'),
         text('faults', 'MEMORY-FAULT-ERROR', 'DIVISION-BY-ZERO', 'Still here: (+ 40 2) is 42',
              'The sum is 1000, with 1 fault'),
-        example('driver', ('see', 'It is an AMD PCnet'), ('see', '52:54:00:12:34:56'), ('see', 'Press a key'),
+        example('driver', ('see', 'It is an AMD PCnet'), ('see', '52:54:00:12:34:56'),
+                ('see', 'the VESA BIOS says the same'), ('see', 'Press a key'),
                 ('key', 'spc'), ('host', display_is(640, 480, 100)), ('key', 'spc'),
                 ('see', 'That was 640x480 in 256 colours'), leave=None),
         example('flip', ('gfx', 0x13, 8), ('key', 'spc'), ('wait', 1), ('key', 'spc'), ('wait', 1)),

@@ -18,11 +18,21 @@
 ;;;;   the card's first base address register says, and MAP-PHYSICAL makes
 ;;;;   it addressable.
 ;;;;
+;;;;   Video memory: where a display card's picture memory is can be read
+;;;;   off the PCI bus too.  (Not the old windows at A0000h and B8000h:
+;;;;   every VGA card answers there, and no register says so.)  The bus
+;;;;   says only "this much memory, at this address", not what it is for:
+;;;;   which of a card's regions is the picture is the card's own business,
+;;;;   so FRAMEBUFFER-ADDRESS guesses -- the first region marked
+;;;;   "prefetchable", which registers never are -- and the guess is
+;;;;   checked against the VESA BIOS, which knows its card.
+;;;;
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.driver
   (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
-  (:export #:main #:station-address #:display-mode #:display-off))
+  (:export #:main #:station-address #:display-mode #:display-off
+           #:memory-regions #:framebuffer-address))
 (in-package #:doslib-examples.driver)
 
 ;;; ---- finding a card
@@ -64,6 +74,46 @@ NIL if the card is not one this driver knows."
                                (and address
                                     (loop for i below 6 collect (peek (+ address offset i)))))))
                   name how))))))
+
+;;; ---- video memory, from the PCI bus
+;;; A base address register that is memory has, below the address, bit 0
+;;; clear, bits 1 and 2 saying how wide the address is (2: 64 bits, the
+;;; next register being its upper half), and bit 3 set if the memory is
+;;; "prefetchable": reading it changes nothing, as with picture memory.
+(defun memory-regions (card)
+  "CARD's regions of memory, from its six base address registers: a list of
+(register address prefetchable)."
+  (destructuring-bind (bus device function &rest ids) card
+    (declare (ignore ids))
+    (let ((regions '()) (n 0))
+      (loop while (< n 6)
+            do (let ((value (pci-read bus device function (+ #x10 (* 4 n)))))
+                 (unless (or (logbitp 0 value) (zerop (logand value #xFFFFFFF0)))
+                   (push (list n (logand value #xFFFFFFF0) (logbitp 3 value)) regions))
+                 (incf n (if (and (not (logbitp 0 value)) (= (ldb (byte 2 1) value) 2)) 2 1))))
+      (nreverse regions))))
+
+(defun framebuffer-address (card)
+  "A guess at the physical address of CARD's picture memory: its first
+prefetchable region of memory, or else its first region.  NIL if it has none."
+  (let ((regions (memory-regions card)))
+    (second (or (find-if #'third regions) (first regions)))))
+
+(defun show-video-memory (card)
+  (format t "  Its memory, by the PCI bus:~%")
+  (loop for (n address prefetchable) in (memory-regions card)
+        do (format t "    register ~D: ~8,'0Xh~:[~;, prefetchable~]~%" n address prefetchable))
+  (let ((guess (framebuffer-address card))
+        (bios (getf (vesa-mode-info #x101) :framebuffer)))
+    (cond ((null guess) (format t "  None: the card has only the windows at A0000h and B8000h.~%"))
+          ((null bios)
+           (format t "  The picture memory should be at ~8,'0Xh; the VESA BIOS gives no address.~%"
+                   guess))
+          ((= guess bios)
+           (format t "  The picture memory should be at ~8,'0Xh: the VESA BIOS says the same.~%"
+                   guess))
+          (t (format t "  A guess of ~8,'0Xh for the picture memory is wrong:~%  ~
+                        the VESA BIOS says ~8,'0Xh.~%" guess bios)))))
 
 ;;; ---- the display
 (defconstant +index+ #x1CE)
@@ -107,7 +157,8 @@ NIL if the card is not one this driver knows."
                           and drawn in memory at ~8,'0Xh.~%" width height +index+ +data+ memory))))))
 
 (defun main ()
-  "Two small device drivers: a network card's address, and a display mode with no BIOS."
+  "Two small device drivers: a network card's address, video memory found on
+the PCI bus, and a display mode with no BIOS."
   (unless (pci-present-p)
     (format t "~&This machine has no PCI bus to ask.~%")
     (return-from main (values)))
@@ -126,15 +177,16 @@ NIL if the card is not one this driver knows."
                            name address)
                    (format t "  This driver does not know that card.~%"))))))
   (let ((card (find-card 3 0)))
+    (when card
+      (format t "~&Display card: vendor ~4,'0Xh, device ~4,'0Xh (bus ~D, device ~D).~%"
+              (fourth card) (fifth card) (first card) (second card))
+      (show-video-memory card))
     (cond ((null card) (format t "~&No VGA card on the PCI bus.~%"))
           ((not (display-present-p))
-           (format t "~&The display card (vendor ~4,'0Xh, device ~4,'0Xh) has no Bochs display ~
-                      interface:~%this driver is for QEMU's standard VGA.~%"
-                   (fourth card) (fifth card)))
-          (t (format t "~&Display card: vendor ~4,'0Xh, device ~4,'0Xh; display interface ~
-                        version ~Xh.~%  ~D MB of picture memory at ~8,'0Xh.~%"
-                     (fourth card) (fifth card) (display-register 0)
-                     (floor (display-register #xA) 16) (base-address card 0))
+           (format t "  It has no Bochs display interface: the rest of this driver is for~%  ~
+                      QEMU's standard VGA.~%"))
+          (t (format t "  Bochs display interface version ~Xh, ~D MB of picture memory.~%"
+                     (display-register 0) (floor (display-register #xA) 16))
              (format t "Press a key for 640x480 set through its own registers, and a key to come back.~%")
              (wait-key)
              (show-display card))))

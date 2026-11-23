@@ -31,14 +31,19 @@
   (format t "Ctrl-Break      checking is ~:[off~;on~]~%"
           (plusp (lo (nth-value 3 (dos #x33 :al 0)))))
   (format t "Drives~%")
-  (loop for drive from 3 to 26          ; C: onwards
-        do (multiple-value-bind (ax bx cx dx) (dos #x36 :dx drive)
-             (unless (= (word16 ax) #xFFFF)
-               (let ((cluster (* (word16 ax) (word16 cx))))
-                 (format t "  ~C:  ~9:D KB total  ~9:D KB free  (~D-byte clusters)~%"
-                         (code-char (+ 64 drive))
-                         (floor (* cluster (word16 dx)) 1024)
-                         (floor (* cluster (word16 bx)) 1024) cluster)))))
+  ;; (a drive with nothing in it -- a CD-ROM drive, say -- is a device error:
+  ;; caught, so that DOS does not stop to ask "Abort, Retry, Fail?")
+  (with-critical-errors-caught
+    (loop for drive from 3 to 26        ; C: onwards
+          do (multiple-value-bind (ax bx cx dx) (dos #x36 :dx drive)
+               (if (= (word16 ax) #xFFFF)
+                   (let ((why (critical-error)))
+                     (when why (format t "  ~C:  ~A~%" (code-char (+ 64 drive)) why)))
+                   (let ((cluster (* (word16 ax) (word16 cx))))
+                     (format t "  ~C:  ~9:D KB total  ~9:D KB free  (~D-byte clusters)~%"
+                             (code-char (+ 64 drive))
+                             (floor (* cluster (word16 dx)) 1024)
+                             (floor (* cluster (word16 bx)) 1024) cluster))))))
   (format t "COMSPEC         ~A~%PATH            ~A~%"
           (posix-getenv "COMSPEC") (posix-getenv "PATH")))
 
