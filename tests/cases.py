@@ -293,6 +293,17 @@ def all_cases():
         example('blit', ('gfx', 0x13, 20), ('key', 'spc'), ('wait', 1), ('key', 'spc'), ('wait', 1)),
         example('dirty', ('gfx', 0x13, 20), ('key', 'spc'), ('wait', 1), ('key', 'spc'), ('wait', 1)),
         example('compiled', ('gfx', 0x13, 5), ('wait', 2)),
+        # a formula compiled as it is typed: the machine code on one screen, the picture on the next
+        example('formula', ('see', 'bytes of machine code'), ('key', 'spc'), ('gfx', 0x13, 50),
+                ('key', '3'), ('see', '(* 40 time)'), ('see', 'bytes of machine code'), ('key', 'spc'),
+                ('gfx', 0x13, 50), ('key', 'esc'), leave=None),
+        # instructions added to the compiler; processor faults as conditions; drivers from the registers
+        text('vop', 'in line (a VOP)', 'BSWAP EAX'),
+        text('faults', 'MEMORY-FAULT-ERROR', 'DIVISION-BY-ZERO', 'Still here: (+ 40 2) is 42',
+             'The sum is 1000, with 1 fault'),
+        example('driver', ('see', 'It is an AMD PCnet'), ('see', '52:54:00:12:34:56'), ('see', 'Press a key'),
+                ('key', 'spc'), ('host', display_is(640, 480, 100)), ('key', 'spc'),
+                ('see', 'That was 640x480 in 256 colours'), leave=None),
         example('flip', ('gfx', 0x13, 8), ('key', 'spc'), ('wait', 1), ('key', 'spc'), ('wait', 1)),
         # ---- more graphics: scrolling worlds, palette and fonts, planar mode, effects, picture files
         example('tiles', ('gfx', None, 8), ('wait', 2), ('key', 'p'), ('wait', 1)),
@@ -482,6 +493,17 @@ def second_display(colours):
         count = session.m.picture('second.ppm', 'vga2')
         if count < colours:
             raise Failure('the second display shows %d colours' % count)
+    return step
+
+
+def display_is(width, height, colours):
+    def step(session):
+        for attempt in range(20):
+            count = session.m.picture('look.ppm')
+            if session.m.picture_size == (width, height) and count >= colours:
+                return
+            time.sleep(0.5)
+        raise Failure('the display is %d by %d with %d colours' % (session.m.picture_size + (count,)))
     return step
 
 

@@ -712,6 +712,29 @@ comes to.  examples/support/make-mod.py
                (incf line)))
   (put-string 1 24 "Esc ends" 8))
 
+;;; A scope for each channel, in text: the wave the channel is playing, from
+;;; where it has got to, nineteen samples across and three rows high.  A row
+;;; of text shows two heights with the half-block characters, so there are
+;;; six; the wave is scaled by the channel's volume, as the mixer scales it.
+(defun draw-scopes (player)
+  (declare (type player player))
+  (dotimes (c 4)
+    (let* ((channel (svref (pl-channels player) c))
+           (data (ch-data channel))
+           (limit (min (ch-end channel) (length data)))
+           (stride (max 1 (ash (ch-step channel) -14)))         ; four output samples a column
+           (top (+ 5 (* 3 c))))
+      (declare (type channel channel) (fixnum limit stride top))
+      (dotimes (i 19)
+        (let* ((at (+ (ch-position channel) (* i stride)))
+               (sample (if (and (ch-active channel) (< at limit)) (aref data at) 0))
+               (level (- 5 (max 0 (min 5 (floor (+ (* sample (ch-volume channel)) 8192) 2731))))))
+          (declare (fixnum at sample level))
+          (dotimes (row 3)
+            (put-char (+ 60 i) (+ top row)
+                      (cond ((= level (* 2 row)) 223) ((= level (1+ (* 2 row))) 220) (t 32))
+                      (if (evenp c) 11 10))))))))
+
 (defun draw-state (player seconds late busy)
   "Where the song is, the rows around it, and how loud each channel has been."
   (declare (type player player) (fixnum seconds late busy))
@@ -744,6 +767,7 @@ comes to.  examples/support/make-mod.py
         (put-string 48 y "volume" 8)
         (put-number 55 y (ch-volume channel) 2 7)
         (setf (ch-level channel) (ash (* 3 (ch-level channel)) -2))))     ; the bars fall back
+    (draw-scopes player)
     ;; the time of the song made so far, and the clock's
     (let ((song-tenths (truncate (* 10 (pl-mixed player)) (pl-rate player))))
       (put-string 12 24 "song" 8)

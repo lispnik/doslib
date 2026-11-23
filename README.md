@@ -107,9 +107,9 @@ Each example is one file with a package of its own,
 
 | Category | Examples |
 |---|---|
-| `graphics/` | blit bmpview compiled copper dirty fire flip font gcviz latch lfb lsystem mandel mode12 modex paint palette parallax picview plasma raycast raytrace rotozoom scroll solid3d split sprite stars textfont textfx tiles tunnel turtle vesa wire3d |
-| `system/` | alarm asm asmdsl calc cdrom diskinfo dosinfo fatview floppy intvec ivt joystick keys mcbwalk memmap pciscan ports printer probes serial speed step sysinfo term timer xms |
-| `lisp/` | bench hotfix life live restarts resume shell snake special windows |
+| `graphics/` | blit bmpview compiled copper dirty fire flip font formula gcviz latch lfb lsystem mandel mode12 modex paint palette parallax picview plasma raycast raytrace rotozoom scroll solid3d split sprite stars textfont textfx tiles tunnel turtle vesa wire3d |
+| `system/` | alarm asm asmdsl calc cdrom diskinfo driver dosinfo fatview floppy intvec ivt joystick keys mcbwalk memmap pciscan ports printer probes serial speed step sysinfo term timer vop xms |
+| `lisp/` | bench faults hotfix life live restarts resume shell snake special windows |
 | `sound/` | adlib blaster dmascope midi mixer modplay record speaker spectrum tune |
 | `network/` | browse files irc netpong ntp remote websrv wget |
 
