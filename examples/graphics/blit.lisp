@@ -90,18 +90,73 @@ it is empty)."
 
 ;;; ---- drawing, into video memory or the back buffer alike: DEST is the
 ;;; address of 64,000 bytes
+;;;
+;;; The inner loop is machine instructions put straight into BLIT by the
+;;; compiler: an operation of our own, added to it the way the example "vop"
+;;; explains.  It copies a block WIDTH by HEIGHT from FROM (its rows one
+;;; after another) to TO, leaving out the bytes that are 0; GAP is how far
+;;; it is from the end of one row at TO to the start of the next.  ESI and
+;;; EDI are the two places, EDX counts rows and ECX columns; that leaves too
+;;; few registers for WIDTH and GAP, so they may stay on the stack, or (the
+;;; IMMEDIATE storage class) be numbers written into the instructions.  A Lisp
+;;; loop over AREF and SAP-REF-8 does the same at half the speed.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (sb-c:defknown blit-block (system-area-pointer system-area-pointer
+                             (unsigned-byte 32) (unsigned-byte 32) (unsigned-byte 32))
+      (values) () :overwrite-fndb-silently t)
+
+  (sb-c:define-vop (blit-block)
+    (:translate blit-block)
+    (:policy :fast-safe)
+    (:args (from :scs (sb-vm::sap-reg) :target esi)
+           (to :scs (sb-vm::sap-reg) :target edi)
+           (width :scs (sb-vm::unsigned-reg sb-vm::unsigned-stack sb-vm::immediate) :to :result)
+           (height :scs (sb-vm::unsigned-reg) :target edx)
+           (gap :scs (sb-vm::unsigned-reg sb-vm::unsigned-stack sb-vm::immediate) :to :result))
+    (:arg-types system-area-pointer system-area-pointer
+                sb-vm::unsigned-num sb-vm::unsigned-num sb-vm::unsigned-num)
+    (:temporary (:sc sb-vm::unsigned-reg :offset sb-vm::esi-offset :from (:argument 0)) esi)
+    (:temporary (:sc sb-vm::unsigned-reg :offset sb-vm::edi-offset :from (:argument 1)) edi)
+    (:temporary (:sc sb-vm::unsigned-reg :offset sb-vm::edx-offset :from (:argument 3)) edx)
+    (:temporary (:sc sb-vm::unsigned-reg :offset sb-vm::ecx-offset) ecx)
+    (:temporary (:sc sb-vm::unsigned-reg :offset sb-vm::eax-offset) eax)
+    (:ignore eax)                       ; used as AL
+    (:generator 40
+      (sb-vm::move esi from)
+      (sb-vm::move edi to)
+      (sb-vm::move edx height)
+      (let ((row (sb-assem:gen-label))
+            (again (sb-assem:gen-label))
+            (skip (sb-assem:gen-label))
+            ;; a number known when compiling goes into the instruction itself
+            (width (if (sb-c:sc-is width sb-vm::immediate) (sb-c:tn-value width) width))
+            (gap (if (sb-c:sc-is gap sb-vm::immediate) (sb-c:tn-value gap) gap)))
+        (sb-assem:emit-label row)
+        (sb-assem:inst mov ecx width)
+        (sb-assem:emit-label again)
+        (sb-assem:inst mov sb-vm::al-tn (sb-vm::make-ea :byte :base esi))   ; al <- [esi]
+        (sb-assem:inst inc esi)
+        (sb-assem:inst test sb-vm::al-tn sb-vm::al-tn)                      ; colour 0?
+        (sb-assem:inst jmp :z skip)                                         ; then leave it
+        (sb-assem:inst mov (sb-vm::make-ea :byte :base edi) sb-vm::al-tn)   ; [edi] <- al
+        (sb-assem:emit-label skip)
+        (sb-assem:inst inc edi)
+        (sb-assem:inst dec ecx)
+        (sb-assem:inst jmp :nz again)
+        (sb-assem:inst add edi gap)                                         ; the next row
+        (sb-assem:inst dec edx)
+        (sb-assem:inst jmp :nz row)))))
+
 (defun blit (dest sprite x y)
-  "Draw SPRITE with its corner at X, Y, leaving out colour 0."
+  "Draw SPRITE with its corner at X, Y, leaving out colour 0.  (Nothing is
+clipped: the sprite must be wholly inside the picture.)"
   (declare (type system-area-pointer dest) (type bytes sprite) (type (unsigned-byte 16) x y)
            (optimize speed (safety 0)))
-  (let ((at (+ x (* +width+ y))) (i 0))
-    (declare (fixnum at i))
-    (dotimes (row +size+)
-      (dotimes (column +size+)
-        (let ((colour (aref sprite i)))
-          (unless (zerop colour) (setf (sap-ref-8 dest (+ at column)) colour)))
-        (incf i))
-      (incf at +width+))))
+  ;; the sprite must stay where it is while its address is in use
+  (with-pinned-objects (sprite)
+    (blit-block (vector-sap sprite) (sap+ dest (+ x (* +width+ y)))
+                +size+ +size+ (- +width+ +size+)))
+  (values))
 
 ;;; ---- the sprites: where each is, and which way it is going
 (defstruct (flock (:constructor %make-flock))

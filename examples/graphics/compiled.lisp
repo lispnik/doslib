@@ -175,46 +175,45 @@ into 16 lines of ordinary memory, over a pattern, and the two are compared."
     (multiple-value-bind (code-bytes stores) (compile-sprite sprite)
       (setf bytes (length code-bytes))
       (let ((code (apply #'machine-code code-bytes)) (screen *vga*))
-        (unwind-protect
-             (with-video-mode (#x13)
-               (setf same (same-pixels-p sprite code))
-               (graphics-text 0 0 (text "A sprite of ~D pixels, compiled:"
-                                        (count 0 sprite :test #'/=))
-                              15)
-               (graphics-text 0 8 (text "~D instructions, ~:D bytes of code" (+ stores 4) bytes)
-                              15)
-               (graphics-text +lisp-x+ 20 "Lisp blitter" 14)
-               (graphics-text +compiled-x+ 20 "Compiled sprite" 14)
-               (graphics-text 296 192 "Esc" 7)
-               (let ((lisp-seed 1) (compiled-seed 1)
-                     (lisp-clocks 0) (compiled-clocks 0) (lisp-sprites 0) (compiled-sprites 0))
-                 (loop
-                   (when (and (key-pressed-p) (eql (get-key) #\Escape)) (return))
-                   (let ((start (timer-count)) middle)
-                     (setf lisp-seed (lisp-turn screen sprite lisp-seed +lisp-turn+)
-                           middle (timer-count)
-                           compiled-seed (compiled-turn (sap-int screen) code compiled-seed
-                                                        +compiled-turn+))
-                     (let ((end (timer-count)))
-                       (when (<= start middle end)              ; (not over midnight)
-                         (incf lisp-clocks (- middle start)) (incf lisp-sprites +lisp-turn+)
-                         (incf compiled-clocks (- end middle))
-                         (incf compiled-sprites +compiled-turn+))))
-                   ;; about twice a second, say how it is going
-                   (when (and (> (+ lisp-clocks compiled-clocks) (floor +timer-hz+ 2))
-                              (> lisp-clocks 0) (> compiled-clocks 0))
-                     (setf lisp-rate (round (* lisp-sprites +timer-hz+) lisp-clocks)
-                           compiled-rate (round (* compiled-sprites +timer-hz+)
-                                                compiled-clocks))
-                     (graphics-text +lisp-x+ 28 (text "~9:D a second" lisp-rate) 15)
-                     (graphics-text +compiled-x+ 28 (text "~9:D a second" compiled-rate) 15)
-                     (graphics-text
-                      0 192
-                      (text "~:[THE PIXELS DIFFER!~;Same pixels~], ~,1F times as fast "
-                            same (/ compiled-rate (max 1.0 (float lisp-rate))))
-                      (if same 10 12))
-                     (setf lisp-clocks 0 compiled-clocks 0 lisp-sprites 0 compiled-sprites 0)))))
-          (free-alien (sap-alien code (* (unsigned 8)))))))
+        ;; (the code is not given back: MACHINE-CODE puts it in pages it shares)
+        (with-video-mode (#x13)
+          (setf same (same-pixels-p sprite code))
+          (graphics-text 0 0 (text "A sprite of ~D pixels, compiled:"
+                                   (count 0 sprite :test #'/=))
+                         15)
+          (graphics-text 0 8 (text "~D instructions, ~:D bytes of code" (+ stores 4) bytes)
+                         15)
+          (graphics-text +lisp-x+ 20 "Lisp blitter" 14)
+          (graphics-text +compiled-x+ 20 "Compiled sprite" 14)
+          (graphics-text 296 192 "Esc" 7)
+          (let ((lisp-seed 1) (compiled-seed 1)
+                (lisp-clocks 0) (compiled-clocks 0) (lisp-sprites 0) (compiled-sprites 0))
+            (loop
+              (when (and (key-pressed-p) (eql (get-key) #\Escape)) (return))
+              (let ((start (timer-count)) middle)
+                (setf lisp-seed (lisp-turn screen sprite lisp-seed +lisp-turn+)
+                      middle (timer-count)
+                      compiled-seed (compiled-turn (sap-int screen) code compiled-seed
+                                                   +compiled-turn+))
+                (let ((end (timer-count)))
+                  (when (<= start middle end)              ; (not over midnight)
+                    (incf lisp-clocks (- middle start)) (incf lisp-sprites +lisp-turn+)
+                    (incf compiled-clocks (- end middle))
+                    (incf compiled-sprites +compiled-turn+))))
+              ;; about twice a second, say how it is going
+              (when (and (> (+ lisp-clocks compiled-clocks) (floor +timer-hz+ 2))
+                         (> lisp-clocks 0) (> compiled-clocks 0))
+                (setf lisp-rate (round (* lisp-sprites +timer-hz+) lisp-clocks)
+                      compiled-rate (round (* compiled-sprites +timer-hz+)
+                                           compiled-clocks))
+                (graphics-text +lisp-x+ 28 (text "~9:D a second" lisp-rate) 15)
+                (graphics-text +compiled-x+ 28 (text "~9:D a second" compiled-rate) 15)
+                (graphics-text
+                 0 192
+                 (text "~:[THE PIXELS DIFFER!~;Same pixels~], ~,1F times as fast "
+                       same (/ compiled-rate (max 1.0 (float lisp-rate))))
+                 (if same 10 12))
+                (setf lisp-clocks 0 compiled-clocks 0 lisp-sprites 0 compiled-sprites 0)))))))
     (format t "~&compiled: the sprite is ~:D bytes of machine code~
                ~:[, WHICH DRAWS IT WRONGLY~;~].~%~
                ~:D sprites a second with the compiled sprite, ~:D with the Lisp blitter.~%"
