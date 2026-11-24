@@ -19,6 +19,10 @@
 #                           app (https://mac.getutm.app), and open it there
 #   ./run-dos.sh utm update | build | put FILE.. | get FILE.. | ls | setup
 #   ./run-dos.sh utm cdrom DISC.ISO   put a disc in the UTM machine's drive
+#   ./run-dos.sh utm clone | macbox clone
+#                           give that machine what the QEMU machine has, built
+#                           files and all: seconds, where update and build
+#                           are minutes.  (Files of your own on its D: stay.)
 #   ./run-dos.sh macbox     make the same machine for 86Box, as MacBox
 #                           (https://github.com/Moonif/MacBox) keeps them:
 #                           ~/MacBox/SBCL on FreeDOS, a Pentium II with a VGA
@@ -62,6 +66,8 @@
 #                   the SBCL source tree, built for DOS with make-dos.sh
 #                   and make-dos-contrib.sh asdf sb-bsd-sockets
 # Extra QEMU options go in RUN_DOS_QEMU_OPTIONS.
+# "update" copies only what has changed, and "build" then compiles only that;
+# RUN_DOS_CLEAN=1 ./run-dos.sh update copies, and so builds, everything afresh.
 # Every machine has a CD-ROM drive, E: in DOS.  RUN_DOS_CDROM=disc.iso puts
 # a disc in QEMU's, "./run-dos.sh utm cdrom disc.iso" in the UTM machine's,
 # and 86Box's Media menu in its own.
@@ -100,7 +106,9 @@ MTOOLSRC=$vm/mtoolsrc; MTOOLS_SKIP_CHECK=1; export MTOOLSRC MTOOLS_SKIP_CHECK
 # agree with it: otherwise a source file copied in looks hours older than
 # it is, and ASDF does not compile it again.
 TZ=UTC; export TZ
-printf 'drive c: file="%s" partition=1\ndrive d: file="%s" partition=1\n' "$boot" "$data" > "$MTOOLSRC"
+# (p: is the QEMU machine's D:, for "clone")
+printf 'drive c: file="%s" partition=1\ndrive d: file="%s" partition=1\ndrive p: file="%s" partition=1\n' \
+    "$boot" "$data" "$vm/data.img" > "$MTOOLSRC"
 
 running() {
     pgrep -f "$data" > /dev/null 2>&1 && return 0
@@ -157,10 +165,12 @@ old_demos="asm bench bmpview diskinfo dosinfo doslib emacs fire font gcviz intve
 copy_files() {
     echo "copying SBCL and the doslib project onto D:"
     mmd -D s d:/SBCL d:/SBCL/CONTRIB d:/HOME 2>/dev/null || true
-    mcopy -o "$src/src/runtime/sbcl.exe" "$src/src/runtime/hdpmi32.exe" "$src/output/sbcl.core" d:/SBCL/
+    # (with the times they have here, the contribs above all: a project that
+    # depends on one is compiled again when the contrib looks newer than it)
+    mcopy -m -o "$src/src/runtime/sbcl.exe" "$src/src/runtime/hdpmi32.exe" "$src/output/sbcl.core" d:/SBCL/
     [ -f "$src/obj/sbcl-home/contrib/asdf.fasl" ] \
         || { echo "run-dos.sh: ASDF is not built: run ./make-dos-contrib.sh asdf sb-bsd-sockets in $src" >&2; exit 1; }
-    mcopy -o "$src"/obj/sbcl-home/contrib/* d:/SBCL/CONTRIB/
+    mcopy -m -o "$src"/obj/sbcl-home/contrib/* d:/SBCL/CONTRIB/
     mcopy -o "$tools/dl-pktdrv/crynwr/DRIVERS/CRYNWR/PCNTPK.COM" d:/SBCL/
     printf 'my_ip = dhcp\r\n' > "$vm/wattcp.cfg"; mcopy -o "$vm/wattcp.cfg" d:/SBCL/WATTCP.CFG
     # The mouse driver: FreeDOS's CTMOUSE, from the package on its install image
@@ -173,21 +183,37 @@ copy_files() {
     done
     mdel d:/SBCL/PICTURE.BMP 2>/dev/null || true
 
-    # The project, afresh (so nothing stale is left, compiled files
-    # included: "build" makes those again).  Documentation gets DOS line
-    # endings.  Lisp source does not: ASDF reads it as it is, and a carriage
-    # return inside a string would be part of the string.
-    mdeltree d:/DOSLIB 2>/dev/null || true
+    # The project.  Each file keeps the time it was last changed, and the
+    # compiled files on the disk are left alone, so that "build" compiles
+    # only what has changed since: ASDF goes by the times.  Compiled files
+    # are no good to another SBCL, though: SBCL.ID on the disk says which
+    # SBCL they were made by, and when that is not this one (or with
+    # RUN_DOS_CLEAN=1) the project is copied afresh.  Documentation gets DOS
+    # line endings.  Lisp source does not: ASDF reads it as it is, and a
+    # carriage return inside a string would be part of the string.
+    sbcl_id=`cat "$src/src/runtime/sbcl.exe" "$src/output/sbcl.core" | cksum`
+    if [ -n "$RUN_DOS_CLEAN" ] || [ "`mtype d:/SBCL/SBCL.ID 2>/dev/null`" != "$sbcl_id" ]; then
+        mdeltree d:/DOSLIB 2>/dev/null || true
+    fi
+    echo "$sbcl_id" > "$vm/sbcl.id"; mcopy -o "$vm/sbcl.id" d:/SBCL/SBCL.ID; rm -f "$vm/sbcl.id"
     stage=$vm/stage; rm -rf "$stage"; mkdir -p "$stage"
-    (cd "$here" && find . -type f ! -path './doc/*' ! -path './.git/*' ! -name '*.fasl' ! -name '.*' \
-                        ! -name run-dos.sh) | while read -r f; do
+    (cd "$here" && find . -type f ! -path './doc/*' ! -path './.git/*' ! -path './screenshots/*' \
+                        ! -name '*.fasl' ! -name '.*' ! -name run-dos.sh) | while read -r f; do
         mkdir -p "$stage/DOSLIB/`dirname "$f"`"
         case "$f" in
-            *.md|*.txt) sed 's/$/\r/' "$here/$f" > "$stage/DOSLIB/$f" ;;
-            *) cp "$here/$f" "$stage/DOSLIB/$f" ;;
+            *.md|*.txt) sed 's/$/\r/' "$here/$f" > "$stage/DOSLIB/$f"; touch -r "$here/$f" "$stage/DOSLIB/$f" ;;
+            *) cp -p "$here/$f" "$stage/DOSLIB/$f" ;;
         esac
     done
-    mcopy -s -o -Q "$stage/DOSLIB" d:/
+    # what is on the disk and no longer in the project goes, with its compiled file
+    mdir -/ -b d:/DOSLIB 2>/dev/null | tr -d '\r' | sed -n 's|^d:/DOSLIB/||p' | while read -r f; do
+        case "$f" in */) continue ;; esac
+        [ -f "$stage/DOSLIB/$f" ] && continue
+        case "$f" in *.fasl) [ -f "$stage/DOSLIB/${f%.fasl}.lisp" ] && continue ;; esac
+        mdel "d:/DOSLIB/$f" 2>/dev/null || true
+    done
+    mdeltree d:/DOSLIB/screenshots 2>/dev/null || true     # (they were copied once, and are not wanted on the disk)
+    mcopy -s -m -o -Q "$stage/DOSLIB" d:/
     rm -rf "$stage"
 
     # SBCL's init file
@@ -574,6 +600,28 @@ case "$command" in
         fi
         cp "$2" "$bundle/Data/cdrom.iso"
         echo "$2 is the disc in the UTM machine's drive, E:" ;;
+    clone)
+        # The same SBCL and the same project, built, as the QEMU machine has:
+        # its files are copied, compiled ones and all, so nothing is built here.
+        [ -n "$utm$macbox" ] || { echo "usage: $0 utm clone | $0 macbox clone" >&2; exit 2; }
+        need_stopped
+        if pgrep -f "$vm/data.img" > /dev/null 2>&1; then
+            echo "run-dos.sh: the QEMU machine is running (or being built): its disk cannot be read now" >&2; exit 1
+        fi
+        mdir p:/SBCL/DOSLIB.COR > /dev/null 2>&1 && mdir p:/SBCL/EMACS.EXE > /dev/null 2>&1 \
+            || { echo "run-dos.sh: the QEMU machine is not built: run $0 build first" >&2; exit 1; }
+        [ -f "$data" ] || { make_boot; make_data; }
+        make_boot
+        echo "copying SBCL and the built project from the QEMU machine's disk"
+        mmd -D s d:/SBCL d:/SBCL/CONTRIB d:/HOME 2>/dev/null || true
+        mdeltree d:/DOSLIB 2>/dev/null || true
+        mcopy -s -m -o -Q p:/DOSLIB d:/
+        mcopy -m -o -Q p:/SBCL/CONTRIB/* d:/SBCL/CONTRIB/
+        mdir -b p:/SBCL | tr -d '\r' | while read -r f; do
+            case "$f" in */|"") continue ;; esac
+            mcopy -m -o -Q "$f" d:/SBCL/
+        done
+        echo "done: this machine has what the QEMU machine has" ;;
     setup)
         need_stopped; make_boot; make_data; copy_files
         echo "now run:  $0 ${utm:+utm }${macbox:+macbox }build" ;;
@@ -605,5 +653,5 @@ case "$command" in
             -nic user,model=pcnet,hostfwd=tcp:127.0.0.1:$web_port-:8080,hostfwd=tcp:127.0.0.1:$repl_port-:2323 \
             ${RUN_DOS_CDROM:+-cdrom "$RUN_DOS_CDROM"} $sound $RUN_DOS_QEMU_OPTIONS ;;
     *)
-        sed -n "2,60p" "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+        sed -n "2,66p" "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
