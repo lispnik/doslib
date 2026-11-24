@@ -33,7 +33,8 @@ command that takes the argument itself (its TAKES-PREFIX property)."
       (dotimes (i (if (and *prefix-argument* (not (and (symbolp command) (get command 'takes-prefix))))
                       *prefix-argument*
                       1))
-        (cond (command (funcall command))
+        (cond ((and (buf-view *buf*) (view-key keys)))   ; View mode takes a few keys first
+              (command (funcall command))
               ((not (or (= (length keys) 1) (equal keys "SPC")))
                (message "~A is not bound to a command" keys) (return))
               ((buf-read-only *buf*) (message "~A is read-only" (buf-name *buf*)) (return))
@@ -66,7 +67,7 @@ EDITOR-DEBUGGER, which shows the interrupted code's restarts.)"
         *message* nil *unread* '() *defining-macro* nil)
   (layout-windows)
   (reset-display)
-  (video-mode 3)
+  (text-mode)
   (handler-case (when (probe-file "emacsrc.lsp")
                   (let ((*package* *repl-package*)) (load "emacsrc.lsp")))
     (error (e) (message "Error in EMACSRC.LSP: ~A" e)))
@@ -83,7 +84,7 @@ EDITOR-DEBUGGER, which shows the interrupted code's restarts.)"
              (setf *message* nil)
              (run-command command keys)))))))
   (when *leave-display* (funcall *leave-display*))
-  (video-mode 3)
+  (text-mode)
   (values))
 (push (lambda (file) (emacs file) t) sb-ext:*ed-functions*)     ; (ed "file") comes here
 (defun build-emacs (&optional (name "emacs.exe"))

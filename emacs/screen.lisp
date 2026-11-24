@@ -32,8 +32,10 @@ a VESA text mode.  Set it with SCREEN-SIZE.")
 (defvar *display-stale* t "True when the VGA may not be as *SCREEN-SIZE* says.")
 (defvar *display-mode-byte* 3 "What the BIOS calls the mode the editor's screen is in.")
 (defvar *screen-size-hooks* '() "Functions called, with no arguments, when the screen has changed size.")
+(defvar *monochrome* nil "True when the screen is a monochrome card's: no colours.")
 (defun reset-display ()
-  (setf *screen* (int-sap #xB8000) *flush-screen* nil *place-cursor* nil *leave-display* nil
+  (setf *screen* (int-sap (text-memory-address)) *monochrome* (and (monochrome-display-p) t)
+        *flush-screen* nil *place-cursor* nil *leave-display* nil
         *display-stale* t))
 (defun display-cells (columns lines)
   "Say that the screen being drawn on is COLUMNS by LINES, and lay the windows out for it."
@@ -46,27 +48,34 @@ a VESA text mode.  Set it with SCREEN-SIZE.")
 drew pictures, or set the mode again, has changed it.)"
   (and (not *display-stale*)
        (= (peek #x449) *display-mode-byte*)
-       (= (peek16 #x44A) *columns*) (= (1+ (peek #x484)) *lines*)))
+       (= (text-columns) *columns*) (= (text-lines) *lines*)))
 (defun set-display ()
   "Make the VGA the text screen *SCREEN-SIZE* asks for, or as near as the
 card comes to it."
   (destructuring-bind (columns lines mode) *screen-size*
     (declare (ignore columns))
     (cond ((= mode 3)
-           (unless (= (peek #x449) 3) (video-mode 3))
-           (unless (= (1+ (peek #x484)) lines)
-             (int86 #x10 :ax (case lines (50 #x1112) (28 #x1111) (t #x1114)) :bx 0)
-             ;; (the BIOS leaves the cursor shaped for the old font)
-             (int86 #x10 :ax #x0100 :cx #x0607)))
+           (unless (member (peek #x449) '(3 7)) (text-mode))
+           (unless (= (text-lines) lines)
+             (case (display-adapter)
+               ((:vga :mcga)
+                (int86 #x10 :ax (case lines (50 #x1112) (28 #x1111) (t #x1114)) :bx 0)
+                ;; (the BIOS leaves the cursor shaped for the old font)
+                (int86 #x10 :ax #x0100 :cx #x0607))
+               ;; an EGA has 350 scan lines and two fonts: 25 rows of 14, 43 of 8
+               (:ega (int86 #x10 :ax (if (= lines 43) #x1112 #x1111) :bx 0)))))
           ((not (vesa-set-mode mode))
            (setf *screen-size* (list 80 25 3))
-           (video-mode 3))))
+           (text-mode))))
   ;; what the BIOS says came of it is what is drawn on
   (setf *display-mode-byte* (peek #x449) *display-stale* nil)
-  (display-cells (peek16 #x44A) (1+ (peek #x484))))
+  (display-cells (text-columns) (text-lines)))
 (defun screen-sizes ()
   "The text screens there are to choose from: a list of (columns lines mode)."
-  (append (list (list 80 25 3) (list 80 28 3) (list 80 50 3))
+  (append (case (display-adapter)
+            ((:vga :mcga) (list (list 80 25 3) (list 80 28 3) (list 80 50 3)))
+            (:ega (list (list 80 25 3) (list 80 43 3)))
+            (t (list (list 80 25 3))))
           (loop for mode from #x108 to #x10C
                 for info = (ignore-errors (vesa-mode-info mode))
                 when (and info (logbitp 0 (getf info :attributes))
@@ -88,7 +97,8 @@ EMACSRC.LSP: (doslib-emacs:screen-size 80 50)."
     (let ((code (if (< i (length string)) (char-code (char string i)) 32)))
       (when (< (+ x i) *columns*)
         (setf (sap-ref-16 *screen* (* 2 (+ x i (* *columns* y))))
-              (logior (if (< code 256) code 63) (ash attribute 8)))))))
+              (logior (if (< code 256) code 63)
+                      (ash (if *monochrome* (monochrome-attribute attribute) attribute) 8)))))))
 (defun set-cursor (x y)
   (if *place-cursor*
       (funcall *place-cursor* x y)
@@ -349,7 +359,11 @@ does, unless the line starts inside a string or a comment (see LEX-STATES)."
                          (let ((x (- v h)))
                            (when (< -1 x *columns*)
                              (setf (sap-ref-16 *screen* (* 2 (+ x (* *columns* row))))
-                                   (logior (if (< code 256) code 63) (ash attribute 8)))))))
+                                   (logior (if (< code 256) code 63)
+                                           (ash (if *monochrome*
+                                                    (monochrome-attribute attribute)
+                                                    attribute)
+                                                8)))))))
                   (dotimes (k n)
                     (let ((code (char-code (char text k))) (attribute (aref *attrs* k)))
                       (if (= code 9)    ; a tab: blanks up to the next multiple of 8
@@ -363,9 +377,11 @@ does, unless the line starts inside a string or a comment (see LEX-STATES)."
                   (when (and (plusp h) (plusp v)) (cell h 36 #x70))
                   (when (> v (+ h *columns*)) (cell (+ h *columns* -1) 36 #x70))))))))
     (put-string 0 (+ (win-row w) height)
-                (format nil " ~A ~20A L~D C~D  (~A~:[~; Def~])~@[  ~A~]~@[  ~A~]"
-                        (if (buf-modified b) "**" "--") (buf-name b) (1+ line) col
-                        (mode-name (buf-mode b)) (and current *defining-macro*)
+                (format nil " ~A ~20A L~D C~D  (~A~:[~; View~]~:[~; Def~])~@[  ~A~]~@[  ~A~]"
+                        ;; (as in GNU Emacs: ** changed, %% may not be changed)
+                        (cond ((buf-modified b) "**") ((buf-read-only b) "%%") (t "--"))
+                        (buf-name b) (1+ line) col
+                        (mode-name (buf-mode b)) (buf-view b) (and current *defining-macro*)
                         (and (buf-file b) (if (buf-crlf b) "CRLF" "LF"))   ; its line endings
                         (buf-file b))
                 (if current #x70 #x17) *columns*)))

@@ -26,12 +26,33 @@
 (define-command delete-backward-char ()
   "Delete the character before point."
   (backward-char) (delete-char))
+;;; Where the machine shares a clipboard with DOS programs (DOSBox-X does,
+;;; and Windows did: see src/clipboard.lisp), killed text goes to it too, and
+;;; what another program has put there since is yanked first -- so text
+;;; passes between the editor and the programs of the host.
+(defvar *use-clipboard* t "True if kills go to the shared clipboard and yanks look at it.")
+(defvar *clipboard-seen* nil "The clipboard's text when the editor last put or took it.")
+(defun clipboard-export ()
+  "Put the newest kill on the shared clipboard, if there is one."
+  (when (and *use-clipboard* *kill-ring*)
+    (ignore-errors
+     (when (clipboard-present-p)
+       (setf (clipboard-text) (first *kill-ring*))
+       (setf *clipboard-seen* (clipboard-text))))))
+(defun clipboard-import ()
+  "If another program has put text on the shared clipboard, make it the newest kill."
+  (when *use-clipboard*
+    (let ((text (ignore-errors (clipboard-text))))
+      (when (and text (string/= text "") (not (equal text *clipboard-seen*)))
+        (setf *clipboard-seen* text)
+        (unless (equal text (first *kill-ring*)) (push text *kill-ring*))))))
 (defun kill-new (text &optional before)
   (if (and (member *last-command* '(kill-line kill-word backward-kill-word kill-region kill-sexp backward-kill-sexp)) *kill-ring*)
       (setf (first *kill-ring*) (if before
                                     (concatenate 'string text (first *kill-ring*))
                                     (concatenate 'string (first *kill-ring*) text)))
-      (push text *kill-ring*)))
+      (push text *kill-ring*))
+  (clipboard-export))
 (defun kill-between (l1 c1 l2 c2 &optional before)
   (kill-new (delete-between l1 c1 l2 c2) before)
   (goto l1 c1))
@@ -62,9 +83,13 @@
 (define-command copy-region () "Save the text between point and the mark without killing it."
   (multiple-value-bind (l1 c1 l2 c2) (region-bounds)
     (push (text-between l1 c1 l2 c2) *kill-ring*)
+    (clipboard-export)
     (setf (buf-mark-active *buf*) nil)
     (message "Region saved")))
-(define-command yank () "Insert the most recently killed text."
+(define-command yank ()
+  "Insert the most recently killed text, or what another program has put on
+the shared clipboard since."
+  (clipboard-import)
   (unless *kill-ring* (editor-error "The kill ring is empty"))
   (setf (buf-mark *buf*) (cons (point-line) (point-col)))
   (insert (first *kill-ring*)))

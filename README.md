@@ -50,7 +50,9 @@ load what you want:
 | `critical.lisp` | `catch-critical-errors`, `critical-error`: DOS device errors without "Abort, Retry, Fail?" |
 | `dialog.lisp` | `restart-dialog`, `dialog-ask`: choose a restart from a box on the screen |
 | `hotkey.lisp` | `install-hotkey`, `remove-hotkeys`, `poll-hotkeys`: keys taken through the BIOS keyboard intercept |
-| `video.lisp` | `video-mode`, `with-video-mode`, `set-palette`, `rainbow-palette`, `plot`, `draw-line`, `*vga*`, `vesa-set-mode`, `vesa-mode-info` |
+| `video.lisp` | `video-mode`, `with-video-mode`, `*vga*`, `vesa-set-mode`, `vesa-mode-info`; `display-adapter`, `text-memory-address`, `text-lines`, `text-mode`: which display card, and its text screen |
+| | Palettes: `set-palette`, `get-palette`, `rainbow-palette`, `gradient-palette`, `use-palette` (`:grey`, `:fire`, `:ice`, `:ocean`, `:forest`, `:sunset`, `:heat`, `:copper`, `:sepia`, `:amber`, `:phosphor`, `:neon`, `:pastel`, `:earth`), `cube-palette` and `cube-colour`, `save-palette`, `fade-palette`, `rotate-palette` |
+| | Drawing in mode 13h, clipped: `plot`, `get-pixel`, `clear-screen`, `draw-line`, `horizontal-line`, `draw-rectangle`, `fill-rectangle`, `draw-circle`, `fill-circle`, `draw-ellipse`, `fill-ellipse`, `draw-polygon`, `fill-polygon`, `fill-area` (flood fill) |
 | `gtext.lisp` | `graphics-text`, `draw-glyphs`, `glyph-row`: text in the graphics modes, in the BIOS's 8 by 8 characters |
 | `modex.lisp` | `mode-x`, `mode-x-text`, `vga-planes`, `vga-display-start`, `vga-sequencer`, `vga-crtc`, `vga-graphics`, `vga-attribute`: the VGA's registers, and 320x240 in planes |
 | `input.lisp` | `ticks`, `wait-tick`, `key-pressed-p`, `wait-key`, `finish`; `timer-count`, `wait-frame`: time finer than the tick |
@@ -63,6 +65,7 @@ load what you want:
 | `blaster.lisp` | `blaster-present-p`, `blaster-write`, `blaster-read`, `blaster-version`, `with-blaster-interrupt`, `blaster-interrupts`: the Sound Blaster's settings, its processor and its interrupt |
 | `pci.lisp` | `pci-read`, `pci-write`, `pci-devices`: PCI configuration space |
 | `serial.lisp` | `serial-open`, `serial-read-byte`, `serial-write-string`: serial ports, polled |
+| `clipboard.lisp` | `clipboard-present-p`, `clipboard-text` (and its `setf`): the clipboard an emulator or Windows shares with DOS programs |
 | `init.lisp` | `doslib-init`, run at load and whenever a saved core starts |
 
 `doc/reference.md` lists every exported name with its arguments and what
@@ -117,7 +120,7 @@ Each example is one file with a package of its own,
 
 | Category | Examples |
 |---|---|
-| `graphics/` | blit bmpview compiled copper dirty fire flip font formula gcviz latch lfb lsystem mandel mode12 modex paint palette parallax picview plasma raycast raytrace rotozoom scroll solid3d split sprite stars textfont textfx tiles tunnel turtle vesa wire3d |
+| `graphics/` | blit bmpview compiled copper dirty fire flip font formula gcviz latch lfb lsystem mandel mode12 modex paint palette palettes parallax picview plasma raycast raytrace rotozoom scroll shapes solid3d split sprite stars textfont textfx tiles tunnel turtle vesa wire3d |
 | `system/` | alarm asm asmdsl calc cdrom diskinfo driver dosinfo fatview floppy intvec ivt joystick keys mcbwalk memmap pciscan ports printer probes serial speed step sysinfo term timer vop xms |
 | `lisp/` | bench faults hotfix life live restarts resume shell snake special windows |
 | `sound/` | adlib blaster dmascope midi mixer modplay record speaker spectrum tune |
@@ -134,7 +137,7 @@ Some show one hardware technique each:
 | Mode X | `flip` (page flipping), `scroll` (hardware scrolling), `latch` (copies inside video memory) |
 | Other video | `lfb` (the VESA linear framebuffer), `copper` (a palette entry changed on every scanline) |
 | Scrolling worlds | `tiles` (a tile map, only the new column drawn), `parallax` (three layers and sprites, redrawn and flipped), `split` (a status bar by the line-compare register) |
-| Palette and fonts | `palette` (cycling, fades and cross-fades with no pixel redrawn), `textfont` (glyphs redefined in plane 2, 80 by 50) |
+| Palette and fonts | `palette` (cycling, fades and cross-fades with no pixel redrawn), `palettes` (the library's palettes by name, on one picture), `shapes` (the drawing functions: rectangles, ellipses, polygons, a fill), `textfont` (glyphs redefined in plane 2, 80 by 50) |
 | Planar 16 colours | `mode12` (640x480 through the graphics controller: bit mask, set/reset, write modes, latches, XOR) |
 | Demo-scene effects | `rotozoom`, `tunnel`, `solid3d` (filled, shaded and texture-mapped polygons) |
 | Picture files | `bmpview`, `picview` (PCX and GIF decoders in Lisp) |
@@ -163,6 +166,27 @@ the restarts; so does Ctrl-Break, if the code will not stop. `M-.` goes to
 the definition of the name at the cursor and `M-,` comes back; `C-_`
 undoes and `M-_` redoes.
 
+Dired (`C-x d`) colours its lines after GNU Emacs: directories blue,
+programs green, Lisp source white, files flagged for deletion red, and
+backups and compiled files (`.fasl`, `.fas`, `.bak`, `file~` and the like)
+dimmed. `M-x dired-toggle-colours` turns that off and on; in `EMACSRC.LSP`,
+`(setf doslib-emacs:*dired-colours* nil)` starts without it, and
+`*dired-ignored-extensions*` and `*dired-faces*` say what is dimmed and
+which colours are used. `v` views the file on the line: read-only, with
+`SPC` and Backspace to page, `q` to come back to the listing and `e` to
+edit after all (`M-x view-file` does the same for any file, and `C-x C-q`
+makes any buffer read-only or not). The mode line shows `%%` for a buffer
+that may not be changed.
+
+The editor documents itself, behind `C-h` as in GNU Emacs: `C-h k` says
+what a key does (`C-h c` in one line), `C-h w` where a command is on the
+keyboard, `C-h a` lists the commands with some words in their names and
+`C-h d` those whose documentation mentions them, `C-h f`, `C-h x` and
+`C-h v` describe a function, a command and a variable, `C-h m` the mode of
+the buffer and its keys, `C-h l` shows the last keys typed and `C-h e` the
+messages there have been. `C-h ?` lists them all. (For any Lisp symbol,
+not only the editor's: `C-h o` describes and `C-c C-d a` is apropos.)
+
 `F11` switches the screen between 25 lines and 50, in place: on a VGA the
 number of lines is a matter of the font, so nothing is redrawn but the
 editor's own windows. `M-x set-screen-size` offers 80x28 as well, and
@@ -170,6 +194,17 @@ whatever larger text modes (132 columns, 60 lines) the card's VESA BIOS
 has. `(doslib-emacs:screen-size 80 50)` in `EMACSRC.LSP` starts the editor
 that way. A program run from the editor gets the usual 25 lines, and the
 editor takes its own size back afterwards.
+
+The editor asks which display card there is (`(doslib:display-adapter)`)
+and goes by the answer: an EGA has 25 lines and 43, a CGA or a monochrome
+card 25; on a monochrome card (MDA, Hercules) the text is at B0000h and
+the colours become normal, bright and reversed.
+
+Where the machine shares a clipboard with DOS programs, killed text
+(`C-w`, `M-w`, `C-k`) goes to it and `C-y` yanks what another program put
+there: in DOSBox-X that is the Mac's clipboard (`./run-dos.sh dosbox`
+turns it on). From Lisp it is `(doslib:clipboard-text)`, which can be
+`setf`; `(doslib:clipboard-present-p)` is false on plain DOS.
 
 ### Editing Lisp
 
@@ -310,6 +345,14 @@ scale` passes it an argument), and `emacs` starts the editor. The comments at th
 needs: QEMU, mtools, a FreeDOS image, a packet driver, and SBCL built for
 DOS.
 
+`./run-dos.sh dosbox` runs the same build in DOSBox-X, which is its own
+DOS: drive `D:` is a Mac folder filled from the QEMU machine's disk, and
+`P:` is this project's folder itself (or `./run-dos.sh dosbox FOLDER`), so
+a file edited on the Mac is loaded with `(load "P:/examples/graphics/fire.lisp")`
+and nothing is copied. The Mac's clipboard is shared, there is no network,
+and `RUN_DOS_DOSBOX_MACHINE=ega` (or `cga`, `hercules`, `mda`, `vgaonly`,
+`svga_et4000`) chooses the display card.
+
 ## Tests
 
 `tests/run.py` runs the regression tests, on DOS: it boots a copy of the
@@ -333,6 +376,12 @@ The tests are listed in `tests/cases.py`; `tests/run.py --look NAME` runs
 an example and prints what it puts on the screen, which is how to start
 a test for a new one.  The screen of a test that fails is kept in the
 launcher's `vm/test` directory.  It needs QEMU, mtools and Python 3.
+
+`tests/dosbox.py` is for the display cards QEMU does not have: it starts
+the editor in DOSBox-X as a VGA with a VESA BIOS, a plain VGA, an EGA, a
+CGA, a Hercules card and an MDA, and checks that the card is named
+rightly, that the sizes offered are the card's, that the mode line is
+where it should be in each, and the clipboard. Under a minute, no window.
 
 `tests/shots.py` takes the pictures in [screenshots/](screenshots/README.md):
 it runs each example as its test does and saves the display.

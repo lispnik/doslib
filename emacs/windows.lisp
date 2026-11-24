@@ -20,13 +20,15 @@
   (redisplay)                           ; (which is what changes the screen)
   (message "~D columns, ~D lines" *columns* *lines*))
 (define-command toggle-screen-lines ()
-  "Switch the screen between 25 lines and 50, in place."
+  "Switch the screen between 25 lines and 50 (43 on an EGA), in place."
   (when *flush-screen* (editor-error "Not while the editor is on another display"))
-  (screen-size 80 (if (= *lines* 25) 50 25))
+  (let ((most (case (display-adapter) ((:vga :mcga) 50) (:ega 43))))
+    (unless most (editor-error "This display card has only 25 lines"))
+    (screen-size 80 (if (= *lines* 25) most 25)))
   (show-screen-size))
 (define-command set-screen-size ()
-  "Choose the size of the text screen: 80x25, 80x28 and 80x50 on any VGA,
-and whatever other text modes the VESA BIOS has."
+  "Choose the size of the text screen: 80x25, 80x28 and 80x50 on any VGA
+(80x25 and 80x43 on an EGA), and whatever other text modes the VESA BIOS has."
   (when *flush-screen* (editor-error "Not while the editor is on another display"))
   (let* ((sizes (screen-sizes))
          (names (mapcar (lambda (size) (format nil "~Dx~D" (first size) (second size))) sizes))

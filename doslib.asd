@@ -35,6 +35,7 @@
                (:file "blaster")
                (:file "pci")
                (:file "serial")
+               (:file "clipboard")
                (:file "init")))
 
 (defsystem "doslib/examples"
@@ -73,6 +74,8 @@
                              (:file "wire3d")
                              (:file "mode12")
                              (:file "palette")
+                             (:file "palettes")
+                             (:file "shapes")
                              (:file "parallax")
                              (:file "picview")
                              (:file "rotozoom")

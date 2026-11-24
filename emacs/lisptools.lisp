@@ -8,7 +8,7 @@
 ;;;;   SPC                     after a function's or macro's name, shows its
 ;;;;                           arguments in the echo area
 ;;;;   C-c C-d d  (C-h o)      everything DESCRIBE says about a symbol
-;;;;   C-c C-d a  (C-h a)      apropos: the symbols whose names contain a text
+;;;;   C-c C-d a              apropos: the symbols whose names contain a text
 ;;;;   C-c RET                 expand the macro call at point, once
 ;;;;   C-c M-m                 expand it and everything inside it
 ;;;;   C-c C-k                 save, compile and load the buffer's file

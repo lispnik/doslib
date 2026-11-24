@@ -23,6 +23,21 @@
 #                           give that machine what the QEMU machine has, built
 #                           files and all: seconds, where update and build
 #                           are minutes.  (Files of your own on its D: stay.)
+#   ./run-dos.sh dosbox [FOLDER]
+#                           the same SBCL and project in DOSBox-X, which is its
+#                           own DOS: no FreeDOS, no disks, but Mac folders as
+#                           drives.  D: is vm/dosbox, filled from the QEMU
+#                           machine's disk each time; P: is FOLDER (this
+#                           project, if none is given) itself, so that what is
+#                           edited on the Mac can be loaded at once --
+#                           (load "P:/examples/graphics/fire.lisp") -- and
+#                           what is saved there from DOS is on the Mac.  The
+#                           Mac's clipboard is the editor's: C-w and M-w put
+#                           text on it, C-y takes it.  No network.
+#                           RUN_DOS_DOSBOX_COMMAND="demo fire" runs that first;
+#                           RUN_DOS_DOSBOX_MACHINE=ega (or cga, hercules, mda,
+#                           vgaonly, svga_et4000, ...; svga_s3 if not set) is
+#                           the display card.
 #   ./run-dos.sh macbox     make the same machine for 86Box, as MacBox
 #                           (https://github.com/Moonif/MacBox) keeps them:
 #                           ~/MacBox/SBCL on FreeDOS, a Pentium II with a VGA
@@ -639,6 +654,25 @@ case "$command" in
         for f in "$@"; do mcopy -n -o "d:/SBCL/$f" .; done ;;
     ls)
         need_stopped; mdir d:/SBCL ;;
+    dosbox)
+        command -v dosbox-x > /dev/null || { echo "run-dos.sh: dosbox-x is not installed (brew install dosbox-x)" >&2; exit 1; }
+        [ -f "$vm/data.img" ] || { echo "run-dos.sh: nothing built yet: $0 update, then $0 build" >&2; exit 1; }
+        folder=${2:-$here}
+        [ -d "$folder" ] || { echo "run-dos.sh: $folder is not a folder" >&2; exit 2; }
+        folder=`cd "$folder" && pwd`
+        mkdir -p "$vm/dosbox/HOME"
+        mcopy -s -m -o -Q p:/SBCL p:/DOSLIB "$vm/dosbox/"
+        # (DOSBox-X's "dynamic" core gets IMUL's overflow flag wrong, which
+        # SBCL's compiler depends on: hence the slower "normal" one)
+        exec dosbox-x -fastlaunch -nolog \
+            -set "dosbox machine=${RUN_DOS_DOSBOX_MACHINE:-svga_s3}" \
+            -set "dosbox memsize=512" -set "cpu cputype=ppro_slow" -set "cpu core=normal" -set "cpu cycles=max" \
+            -set "dos lfn=true" -set "dos ver=7.1" -set "dos files=200" -set "dos clipboard api=true" \
+            $RUN_DOS_DOSBOX_OPTIONS \
+            -c "mount d \"$vm/dosbox\"" -c "mount p \"$folder\"" -c "d:" -c "cd \\SBCL" -c "set HOME=D:\\HOME" \
+            -c "echo SBCL for DOS.  Try:   sbcl    emacs    demo    demo plasma    type readme.txt" \
+            -c "echo P: is $folder" \
+            ${RUN_DOS_DOSBOX_COMMAND:+-c "$RUN_DOS_DOSBOX_COMMAND"} ;;
     run)
         if running; then echo "run-dos.sh: the DOS machine is already running" >&2; exit 1; fi
         if [ ! -f "$boot" ] || [ ! -f "$data" ]; then make_boot; make_data; copy_files; build; fi
@@ -653,5 +687,5 @@ case "$command" in
             -nic user,model=pcnet,hostfwd=tcp:127.0.0.1:$web_port-:8080,hostfwd=tcp:127.0.0.1:$repl_port-:2323 \
             ${RUN_DOS_CDROM:+-cdrom "$RUN_DOS_CDROM"} $sound $RUN_DOS_QEMU_OPTIONS ;;
     *)
-        sed -n "2,66p" "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+        sed -n "2,81p" "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

@@ -35,6 +35,8 @@ with its own :TOPLEVEL function calls it first."
   (setf *timer-count* 0 *last-frame* 0) ; midnight may have passed, or the machine restarted
   (setf *blaster-hook* nil *key-segment* nil *key-old-vector* nil)
   (clrhash *irq-hooks*)                 ; the handlers were the old process's memory
+  (setf *display-adapter* nil            ; a saved core may start on another machine
+        *text-screen* (int-sap (text-memory-address)))
   (setf *hotkey-segment* nil)
   (setf *hotkey-old-vector* nil)        ; a new process: nothing is hooked
   (clrhash *hotkey-functions*)

@@ -32,6 +32,12 @@ own, DOSLIB-EXAMPLES.<NAME>, with a MAIN function, and is registered here:
 Ctrl-Break (or Ctrl-Alt-Shift) stops it: the screen goes back to text, the
 speaker is silenced, and RUN returns."
   (let ((example (find-example name)))
+    (when (and (eq (example-category example) :graphics)
+               (not (member (doslib:display-adapter) '(:vga :mcga))))
+      (format t "~&~A draws in the VGA's modes, and this machine's display card is ~:[an~;a~] ~A.~%"
+              (example-name example) (member (doslib:display-adapter) '(:cga :mda :hercules))
+              (doslib:display-adapter))
+      (return-from run (values)))
     (when (eq (doslib:catching-interrupt (apply (example-function example) arguments) nil)
               :interrupted)
       (doslib:speaker-off)

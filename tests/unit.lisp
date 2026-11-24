@@ -29,7 +29,7 @@
   (let ((text (substitute #\Space #\Newline (princ-to-string thing))))
     (subseq text 0 (min 70 (length text)))))
 
-(defun text-mode ()                     ; whatever was running, the tally must be readable
+(defun readable-screen ()               ; whatever was running, the tally must be readable
   (unless (and (member (peek #x449) '(2 3)) (= (peek #x484) 24))
     (video-mode 3)))
 
@@ -40,7 +40,7 @@
       (dolist (test *tests*)
         (let ((problem (handler-case (progn (funcall (cdr test)) nil)
                          (error (e) (one-line e)))))
-          (text-mode)
+          (readable-screen)
           (format log "~:[ok~;FAIL~] ~(~A~)~@[: ~A~]~%" problem (car test) problem)
           (when problem
             (incf failed)
@@ -52,7 +52,7 @@
   "Run the example NAME; say how it ended on a line the runner looks for."
   (let ((result (handler-case (progn (apply #'doslib-examples:run name arguments) "ok")
                   (error (e) (format nil "ERROR ~A" (one-line e))))))
-    (text-mode)
+    (readable-screen)
     (format t "~&=== ~D ~A~%" number result)
     (values)))
 
@@ -215,9 +215,81 @@
               (is= 0 (peek (+ #xA0000 10)))
               (draw-line 0 10 9 19 9)                   ; a diagonal
               (is (loop for i below 10 always (= 9 (peek (+ #xA0000 i (* 320 (+ 10 i)))))))
+              ;; the other shapes: what they draw is counted, pixel by pixel
+              (flet ((count-colour (colour)
+                       (loop for i below 64000 count (= colour (peek (+ #xA0000 i))))))
+                (clear-screen 3)
+                (is= 64000 (count-colour 3))
+                (is= 3 (get-pixel 319 199))
+                (is (null (get-pixel 320 0)))
+                (clear-screen)
+                (horizontal-line 315 400 5 6)           ; clipped at the edge
+                (is= 5 (count-colour 6))
+                (draw-rectangle 10 10 20 10 1)          ; 2 x 20 + 2 x 8
+                (is= 56 (count-colour 1))
+                (is= 1 (get-pixel 29 19))
+                (is= 0 (get-pixel 11 11))
+                (fill-rectangle 100 100 20 10 2)
+                (is= 200 (count-colour 2))
+                (fill-rectangle 310 195 50 50 4)        ; only its corner is on the screen
+                (is= 50 (count-colour 4))
+                (fill-area 15 15 5)                     ; the inside of the outline: 18 x 8
+                (is= 144 (count-colour 5))
+                (is= 1 (get-pixel 10 10))
+                (clear-screen)
+                (draw-circle 100 100 20 7)
+                (is (every (lambda (p) (eql 7 (get-pixel (first p) (second p))))
+                           '((120 100) (80 100) (100 120) (100 80))))
+                (is= 0 (get-pixel 100 100))
+                (is= 0 (get-pixel 121 100))
+                (fill-area 100 100 8)                   ; the outline has no gaps: nothing leaks
+                (is= 0 (get-pixel 0 0))
+                (is= 8 (get-pixel 110 110))
+                (fill-ellipse 200 100 30 10 9)
+                (is= 9 (get-pixel 230 100))
+                (is= 9 (get-pixel 200 90))
+                (is= 0 (get-pixel 229 91))
+                (draw-ellipse 200 100 400 300 10)       ; far bigger than the screen: no harm
+                (clear-screen)
+                (fill-polygon '((10 10) (50 10) (10 50)) 11)
+                (is= 11 (get-pixel 15 15))
+                (is= 11 (get-pixel 10 50))
+                (is= 0 (get-pixel 45 45))
+                (draw-polygon '((100 10) (140 10) (120 40)) 12)
+                (is= 12 (get-pixel 120 10))
+                (is= 0 (get-pixel 120 20))
+                (fill-polygon '((200 10) (260 10) (260 60) (200 60) (200 40) (240 40) (240 30) (200 30)) 13)
+                (is= 13 (get-pixel 250 35))             ; a C shape: the bite is not filled
+                (is= 0 (get-pixel 220 35))
+                (clear-screen))
               (set-palette 1 63 0 21)
               (outb #x3C7 1)
-              (is= '(63 0 21) (list (inb #x3C9) (inb #x3C9) (inb #x3C9))))
+              (is= '(63 0 21) (list (inb #x3C9) (inb #x3C9) (inb #x3C9)))
+              (is= '(63 0 21) (multiple-value-list (get-palette 1)))
+              ;; a gradient: its ends are the colours given, the middle is between
+              (gradient-palette '((0 0 0) (63 0 0) (63 63 0)) 1 201)
+              (is= '(0 0 0) (multiple-value-list (get-palette 1)))
+              (is= '(63 0 0) (multiple-value-list (get-palette 101)))
+              (is= '(63 63 0) (multiple-value-list (get-palette 201)))
+              (is= '(63 32 0) (multiple-value-list (get-palette 151)))
+              (is= '(0 0 0) (multiple-value-list (get-palette 0)))
+              ;; every palette with a name can be used, and says so
+              (dolist (name (palette-names)) (is (eq name (use-palette name))))
+              (use-palette :grey)
+              (is= '(63 63 63) (multiple-value-list (get-palette 255)))
+              (cube-palette)
+              (is= '(63 0 63) (multiple-value-list (get-palette (cube-colour 5 0 5))))
+              ;; saved, faded to half, and restored
+              (let ((saved (save-palette)))
+                (fade-palette saved 32)
+                (is= '(31 0 31) (multiple-value-list (get-palette (cube-colour 5 0 5))))
+                (restore-palette saved)
+                (is= '(63 0 63) (multiple-value-list (get-palette (cube-colour 5 0 5)))))
+              ;; rotated: each colour moves along one place, the last comes round
+              (gradient-palette '((0 0 0) (63 63 63)) 10 13)
+              (rotate-palette 10 13)
+              (is= '(63 63 63) (multiple-value-list (get-palette 10)))
+              (is= '(0 0 0) (multiple-value-list (get-palette 11))))
     (video-mode 3))
   (is= 3 (peek #x449)))
 

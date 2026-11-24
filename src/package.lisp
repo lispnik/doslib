@@ -14,7 +14,11 @@ ALIEN-FUNCALL.")
           #:without-break-checking #:*cpuid* #:cpuid
           #:peek #:peek16 #:peek32 #:map-physical #:unmap-physical
           #:with-physical-memory #:*vga* #:video-mode #:set-palette
-          #:rainbow-palette #:plot #:draw-line #:wait-tick #:key-pressed-p
+          #:rainbow-palette #:get-palette #:gradient-palette #:*palettes* #:palette-names
+          #:use-palette #:cube-palette #:cube-colour #:save-palette #:restore-palette
+          #:fade-palette #:rotate-palette #:get-pixel #:clear-screen #:horizontal-line
+          #:draw-rectangle #:fill-rectangle #:draw-ellipse #:fill-ellipse #:draw-circle
+          #:fill-circle #:draw-polygon #:fill-polygon #:fill-area #:plot #:draw-line #:wait-tick #:key-pressed-p
           #:wait-key #:finish #:doslib-init
           #:code-selector #:data-selector #:bytes32 #:get-vector #:set-vector
           #:install-hotkey #:remove-hotkey #:remove-hotkeys #:poll-hotkeys
@@ -34,6 +38,9 @@ ALIEN-FUNCALL.")
           #:inw #:outw #:cmos #:bcd
           #:ticks #:current-video-mode #:with-video-mode #:wait-retrace
           #:vesa-set-mode #:vesa-set-bank #:vesa-mode-info
+          #:display-adapter #:monochrome-display-p #:text-memory-address #:text-columns
+          #:text-lines #:text-mode #:monochrome-attribute
+          #:clipboard-present-p #:clipboard-text
           ;; text in the graphics modes
           #:glyph-row #:glyph-rows #:draw-glyphs #:graphics-text
           ;; the VGA's registers, and Mode X

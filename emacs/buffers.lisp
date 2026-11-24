@@ -9,6 +9,7 @@
   (line 0) (col 0) goal mark mark-active file modified (mode 'fundamental-mode)
   undo redo (crlf t) prompt history (history-index -1)
   read-only                             ; true: commands may not change the text
+  view                                  ; View mode: (made-for-viewing buffer-to-go-back-to)
   lex                                   ; what LINE-START-STATE remembers
   dir entries (sort :name))             ; Dired: the directory, its DENTRYs, their order
 ;;; A window that is not selected remembers its own point in POINT; the
@@ -49,10 +50,15 @@
 (defmacro define-command (name lambda-list &body body)
   "Define a function that can be bound to a key or run with M-x."
   `(progn (defun ,name ,lambda-list ,@body) (pushnew ',name *commands*) ',name))
+(defvar *message-log* '() "The echo area's messages, newest first (C-h e shows them).")
 (defun message (control &rest arguments)
   "Show a line in the echo area."
   (setf *message* (one-line (apply #'format nil control arguments))
-        *last-message* *message*))
+        *last-message* *message*)
+  (unless (or (string= *message* "") (equal *message* (first *message-log*)))
+    (push *message* *message-log*)
+    (when (> (length *message-log*) 250) (setf (cdr (nthcdr 199 *message-log*)) nil)))
+  *message*)
 (defun one-line (string)                ; newlines and runs of spaces -> one space
   (with-output-to-string (out)
     (let ((gap nil))

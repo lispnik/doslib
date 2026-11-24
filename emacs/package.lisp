@@ -114,6 +114,14 @@
           #:dired-quit #:dired-help #:layout-windows #:split-window
           #:delete-other-windows #:other-window #:switch-to-repl #:first-line
           #:command-doc #:describe-key #:describe-bindings #:describe-function
+          #:view-file #:view-exit #:view-quit #:view-buffer #:toggle-read-only #:dired-view-file
+          #:buf-view #:*dired-colours* #:*dired-faces* #:*dired-ignored-extensions*
+          #:*dired-program-extensions* #:*dired-source-extensions* #:dired-ignored-p
+          #:dired-toggle-colours #:*use-clipboard* #:clipboard-export #:clipboard-import #:*monochrome*
+          #:describe-key-briefly #:describe-command #:describe-variable #:describe-mode
+          #:where-is #:apropos-command #:apropos-documentation #:view-lossage
+          #:view-echo-area-messages #:help-for-help #:command-keys #:map-bindings
+          #:*modes* #:*lossage* #:*message-log*
           #:execute-command #:exit-editor #:start-macro #:end-macro
           #:call-macro #:end-or-call-macro #:read-prefix #:run-command #:emacs
           #:build-emacs))

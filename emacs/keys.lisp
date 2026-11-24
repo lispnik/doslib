@@ -23,14 +23,17 @@
            ("<f4>" end-or-call-macro) ("C-x e" call-macro) ("C-q" quoted-insert)
            ("C-s" isearch-forward) ("C-r" isearch-backward) ("M-%" replace-string)
            ("C-x C-f" find-file) ("C-x C-s" save-buffer) ("<f2>" save-buffer) ("C-x C-w" write-file)
-           ("C-x RET f" toggle-line-endings)
+           ("C-x RET f" toggle-line-endings) ("C-x C-q" toggle-read-only)
            ("C-x b" switch-to-buffer) ("C-x k" kill-buffer) ("C-x C-b" list-buffers)
            ("<f11>" toggle-screen-lines) ("C-x 2" split-window) ("C-x 1" delete-other-windows) ("C-x o" other-window)
            ("C-x C-e" eval-last-sexp) ("C-c C-c" eval-defun) ("C-c C-b" eval-buffer)
            ("M-:" eval-expression) ("C-c C-z" switch-to-repl) ("C-c C-l" load-file)
            ("M-x" execute-command) ("C-x C-c" exit-editor)
-           ("C-h k" describe-key) ("C-h b" describe-bindings) ("C-h f" describe-function)
-           ("<f1>" describe-bindings)
+           ("C-h k" describe-key) ("C-h c" describe-key-briefly) ("C-h b" describe-bindings)
+           ("C-h f" describe-function) ("C-h x" describe-command) ("C-h v" describe-variable)
+           ("C-h w" where-is) ("C-h a" apropos-command) ("C-h d" apropos-documentation)
+           ("C-h m" describe-mode) ("C-h l" view-lossage) ("C-h e" view-echo-area-messages)
+           ("C-h ?" help-for-help) ("C-h C-h" help-for-help) ("<f1>" describe-bindings)
            ;; Lisp by the expression (sexp.lisp)
            ("C-M-f" forward-sexp) ("C-M-b" backward-sexp) ("C-M-u" backward-up-list)
            ("C-M-d" down-list) ("M-)" up-list) ("C-M-a" beginning-of-defun) ("C-M-e" end-of-defun)
@@ -42,7 +45,7 @@
            ;; Lisp from the running image (lisptools.lisp)
            ("M-TAB" complete-symbol) ("C-M-i" complete-symbol) ("M-/" complete-symbol)
            ("C-c C-d d" describe-symbol) ("C-h o" describe-symbol)
-           ("C-c C-d a" lisp-apropos) ("C-h a" lisp-apropos)
+           ("C-c C-d a" lisp-apropos)
            ("C-c RET" expand-macro) ("C-c M-m" expand-macro-all)
            ("C-c C-r" eval-region) ("C-c C-k" compile-and-load-file) ("C-M-x" eval-defun)
            ("C-c i" goto-definition-in-buffer) ("C-c C-t" toggle-trace)
@@ -52,6 +55,16 @@
 (setf (get 'lisp-mode 'mode-name) "Lisp" (get 'repl-mode 'mode-name) "REPL"
       (get 'fundamental-mode 'mode-name) "Text")
 (setf (get 'dired-mode 'mode-name) "Dired")
+(setf (get 'lisp-mode 'mode-doc)
+      "For Lisp source: it is coloured and indented as Lisp, the expression
+commands (C-M-f and the rest) move over it, and what is typed can be
+evaluated in the running Lisp (C-x C-e, C-c C-c, C-c C-k)."
+      (get 'repl-mode 'mode-doc)
+      "The Lisp listener: RET at the end evaluates what was typed after the
+prompt, and on an earlier input brings it down to be changed."
+      (get 'fundamental-mode 'mode-doc) "For plain text: nothing is coloured or indented."
+      (get 'dired-mode 'mode-doc)
+      "A directory, a file to a line: the keys act on the file the cursor is on.")
 (bind-key "C-x d" 'dired)
 (dolist (binding
          '(("RET" dired-find-file) ("f" dired-find-file) ("e" dired-find-file)
@@ -60,7 +73,7 @@
            ("p" dired-previous-line) ("<up>" dired-previous-line)
            ("d" dired-flag-deletion) ("u" dired-unflag) ("U" dired-unflag-all) ("x" dired-execute)
            ("D" dired-delete) ("R" dired-rename) ("C" dired-copy) ("+" dired-create-directory)
-           ("L" dired-load-file) ("s" dired-sort) ("q" dired-quit) ("?" dired-help) ("h" dired-help)))
+           ("v" dired-view-file) ("L" dired-load-file) ("s" dired-sort) ("q" dired-quit) ("?" dired-help) ("h" dired-help)))
   (bind-key (first binding) (second binding) 'dired-mode))
 (bind-key "RET" 'newline-and-indent 'lisp-mode)
 (bind-key "TAB" 'indent-line 'lisp-mode)

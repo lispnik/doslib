@@ -24,6 +24,7 @@ from dosvm import Failure, DOS_PROMPT
 # Files put in D:\SBCL before the machine starts (with DOS line endings).
 FILES = {
     'T2.TXT': 'one\ntwo\nthree\n',
+    'T9.FAS': 'compiled\n', 'T9.BAK': 'old\n',
     'T3.TXT': 'alpha beta\nalpha gamma\n',
     'T4.TXT': 'one\ntwo\n',
     'T6.LSP': '(list (alpha beta) gamma)\n',
@@ -137,7 +138,7 @@ def meta_x(command):
 
 def emacs(name, file, *steps):
     """An editor test: start it, do STEPS, leave with C-x C-c."""
-    return dos(name, ('line', ('emacs ' + file).strip()), ('see', ' -- '), *steps,
+    return dos(name, ('line', ('emacs ' + file).strip()), ('see', ' -- ', 240), *steps,
                ('key', 'ctrl-x', 'ctrl-c'))
 
 
@@ -313,6 +314,9 @@ def all_cases():
         example('split', ('gfx', None, 20), ('key', 'up'), ('key', 'up'), ('wait', 1), ('key', 'down'), ('wait', 1)),
         example('palette', ('gfx', 0x13, 60), ('key', 'spc'), ('wait', 2), ('key', 'spc'), ('gfx', 0x13, 60),
                 ('wait', 1)),
+        example('palettes', ('gfx', 0x13, 60), ('key', 'spc'), ('wait', 2), ('gfx', 0x13, 20),
+                ('key', 'spc'), ('wait', 2), ('gfx', 0x13, 20)),
+        example('shapes', ('gfx', 0x13, 12)),
         example('textfont', ('see', 'ROM'), ('key', 'spc'), ('see', '176 of 176 agree'), ('key', 'spc'),
                 ('see', 'italics'), ('key', 'spc'), ('see', '50 rows of 8'), ('key', 'spc'),
                 ('see', '25 rows of 16')),
@@ -380,6 +384,15 @@ def all_cases():
               ('key', 'alt-comma'), ('see', '*scratch*'), ('gone', '(defun emacs (&optional file)'),
               ('type', '(defun here () 1)'), ('key', 'ret', 'ret'), ('type', '(here'),
               ('key', 'alt-dot'), ('see', 'Find definition of: here'), ('key', 'ret'), ('see', '*scratch*, line 4')),
+        # ... and from a use of a macro in one of the library's files to its definition in
+        # another; ESC and then the key is Meta too, for keyboards whose Alt is something else
+        emacs('emacs-definition-macro', 'D:\\DOSLIB\\src\\video.lisp', ('see', 'VIDEO.LISP'),
+              ('key', 'ctrl-s'), ('type', '(with-dos-memory'), ('key', 'ret', 'left', 'left'),
+              ('key', 'alt-dot'), ('see', 'Find definition of: with-dos-memory'), ('key', 'ret'),
+              ('see', 'DOS.LISP, line'), ('see', '(defmacro with-dos-memory'),
+              ('key', 'alt-comma'), ('see', 'VIDEO.LISP'),
+              ('key', 'esc', 'dot'), ('see', 'Find definition of: with-dos-memory'), ('key', 'ret'),
+              ('see', 'DOS.LISP, line')),
         # the mouse starts in the middle of the screen: a click puts point there (line 13,
         # column 40); a drag downwards selects from there, which M-w copies
         emacs('emacs-mouse', 'T5.TXT', ('see', 'Read 20 lines'), ('wait', 1),
@@ -455,7 +468,22 @@ def all_cases():
               ('type', 'ED.LSP'), ('key', 'ret'), ('see', '=> T', 120)),
         emacs('emacs-dired', '',
               ('key', 'ctrl-x', 'd'), ('see', 'Dired (directory)'), ('key', 'ret'), ('see', 'Directory of D:\\SBCL\\'),
-              ('see', 'DEMO.BAT'), ('key', 'f1'), ('see', 'describe-bindings')),
+              ('see', 'DEMO.BAT'), ('host', dired_colours(True)),
+              ('key', 'shift-alt-dot'), ('host', dired_colours(True, ('T7.LSP', 'T9.FAS', 'T9.BAK'))),
+              ('key', 'shift-alt-comma'),
+              *meta_x('dired-toggle-colours'), ('see', 'Dired colours are off'), ('host', dired_colours(False)),
+              *meta_x('dired-toggle-colours'), ('see', 'Dired colours are on'), ('host', dired_colours(True)),
+              # v views the file on the line: read-only, q comes back and the buffer is gone
+              ('key', 'ctrl-s'), ('type', 'T2.TXT'), ('key', 'ret'), ('key', 'v'),
+              ('see', '%% T2.TXT'), ('see', '(Text View)'), ('see', 'three'),
+              ('key', 'x'), ('see', 'T2.TXT is read-only'),
+              ('key', 'q'), ('see', '(Dired)'), ('gone', '(Text View)'),
+              # e makes it a buffer to edit; v on a directory goes into it, as RET does
+              ('key', 'v'), ('see', '(Text View)'), ('key', 'e'), ('see', 'T2.TXT can be edited'),
+              ('see', '-- T2.TXT'), *to_buffer('D:\\SBCL\\'),
+              ('key', 'shift-alt-comma'), ('key', 'ctrl-s'), ('type', 'CONTRIB'), ('key', 'ret'), ('key', 'v'),
+              ('see', 'Directory of D:\\SBCL\\CONTRIB\\'),
+              ('key', 'f1'), ('see', 'In Dired mode'), ('see', 'dired-find-file')),
         # the screen's size: 50 lines and back in place, kept across an example, 28 by name
         emacs('emacs-lines', 'README.TXT',
               ('key', 'f11'), ('see', '80 columns, 50 lines'), ('host', screen_rows(50)),
@@ -466,6 +494,26 @@ def all_cases():
               ('key', 'ret'), ('see', '80 columns, 28 lines'), ('host', screen_rows(28)),
               # (from any other size, F11 goes to 25 lines)
               ('key', 'f11'), ('see', '80 columns, 25 lines'), ('host', screen_rows(25))),
+        # the editor documents itself: the commands behind C-h
+        emacs('emacs-help', 'T7.LSP', ('see', 'seven-up'),
+              ('key', 'ctrl-h', 'a'), ('see', 'Apropos command'), ('type', 'window'), ('key', 'ret'),
+              ('see', 'in the name'), ('see', 'split-window   (C-x 2)'), *to_buffer('T7.LSP'),
+              ('key', 'ctrl-h', 'w'), ('see', 'Where is command'), ('type', 'save-buffer'), ('key', 'ret'),
+              ('see', 'save-buffer is on <f2>, C-x C-s'),
+              ('key', 'ctrl-h', 'c', 'ctrl-x', '2'), ('see', 'C-x 2 runs split-window'),
+              ('key', 'ctrl-x', '1'),
+              ('key', 'ctrl-h', 'k', 'ctrl-x', 'ctrl-f'), ('see', 'C-x C-f runs the command find-file'),
+              ('see', 'Keys: C-x C-f'), *to_buffer('T7.LSP'),
+              ('key', 'ctrl-h', 'm'), ('see', 'is in Lisp mode'), ('see', 'Its own keys'), *to_buffer('T7.LSP'),
+              ('key', 'ctrl-h', 'v'), ('see', 'Describe variable'), ('type', '*screen-size*'), ('key', 'ret'),
+              ('see', '(80 25 3)'), ('see', 'The text screen wanted'), *to_buffer('T7.LSP'),
+              ('key', 'ctrl-h', 'd'), ('see', 'Apropos documentation'), ('type', 'echo area'), ('key', 'ret'),
+              ('see', 'view-echo-area-messages'), *to_buffer('T7.LSP'),
+              ('key', 'ctrl-h', 'x'), ('see', 'Describe command'), ('type', 'where-is'), ('key', 'ret'),
+              ('see', 'where-is is a command'), ('see', 'Keys: C-h w'), *to_buffer('T7.LSP'),
+              ('key', 'ctrl-h', 'l'), ('see', 'keys typed, oldest first'), ('see', 'C-h l'), *to_buffer('T7.LSP'),
+              ('key', 'ctrl-h', 'e'), ('see', 'save-buffer is on <f2>, C-x C-s'), *to_buffer('T7.LSP'),
+              ('key', 'ctrl-h', 'shift-slash'), ('see', 'apropos-command'), ('see', 'F1 lists every key')),
         emacs('emacs-extras', 'README.TXT',
               ('key', 'f12'), ('see', 'Lisp calculator'), ('type', '6*7'), ('key', 'ret'), ('see', '6*7 = 42'),
               ('key', 'esc'), ('gone', 'Lisp calculator'),
@@ -516,6 +564,29 @@ def display_is(width, height, colours):
                 return
             time.sleep(0.5)
         raise Failure('the display is %d by %d with %d colours' % (session.m.picture_size + (count,)))
+    return step
+
+
+def dired_colours(on, need=('CONTRIB', 'DEMO.BAT')):
+    """Dired's lines are coloured by kind of file (or, with ON false, only
+    the directories are): the colour of each name on the screen is looked at."""
+    kinds = (('CONTRIB', 9, 11), ('DEMO.BAT', 10, 7), ('T7.LSP', 15, 7), ('T9.FAS', 8, 7),
+             ('T9.BAK', 8, 7), ('README.TXT', 7, 7))
+    def step(session):
+        time.sleep(1)
+        screen = session.m.screen()
+        cells = session.m.memory(0xB8000, 2 * 80 * len(screen))
+        seen = set()
+        for y, row in enumerate(screen[:-2]):
+            for name, coloured, plain in kinds:
+                if row.rstrip().upper().endswith('  ' + name):
+                    x = len(row.rstrip()) - 1
+                    colour, want = cells[2 * (80 * y + x) + 1] & 15, coloured if on else plain
+                    seen.add(name)
+                    if colour != want:
+                        raise Failure('%s is in colour %d, not %d' % (name, colour, want))
+        if not set(need) <= seen:
+            raise Failure('not on the screen: %s' % ' '.join(sorted(set(need) - seen)))
     return step
 
 

@@ -219,6 +219,27 @@ Set BIOS video mode MODE: 3 is 80x25 text, #x13 is 320x200 in 256 colours.
 **`current-video-mode`** `` — Function  
 The BIOS's video mode: 3 is 80x25 text, #x13 is 320x200 in 256 colours.
 
+**`display-adapter`** `` — Function  
+The display card: :VGA, :MCGA, :EGA, :CGA, :HERCULES or :MDA.
+
+**`monochrome-display-p`** `` — Function  
+Is the text screen a monochrome card's (at B0000h, with attributes that are not colours)?
+
+**`text-memory-address`** `` — Function  
+Where the text screen's cells are: B8000h, or B0000h on a monochrome card.
+
+**`text-columns`** `` — Function  
+How many columns the text screen has, by the BIOS.
+
+**`text-lines`** `` — Function  
+How many lines the text screen has: 25, or what an EGA's or VGA's BIOS says.
+
+**`text-mode`** `` — Function  
+Go back to the 80 by 25 text screen: mode 3, or 7 on a monochrome card.
+
+**`monochrome-attribute`** `attribute` — Function  
+The attribute byte that shows on a monochrome card what the colour ATTRIBUTE means on a colour one: reversed for a coloured background, bright for a bright colour.  (Unchanged, blue would be underlined.)
+
 **`with-video-mode`** `(mode) &body body` — Macro  
 Run BODY in video mode MODE, and go back to 80x25 text however it ends.
 
@@ -240,11 +261,80 @@ Make colour INDEX the mixture R, G, B: each from 0 to 63.
 **`rainbow-palette`** `&optional (first 1) (last 255)` — Function  
 Make colours FIRST to LAST a rainbow, and colour 0 black.
 
+**`get-palette`** `index` — Function  
+What colour INDEX is: its R, G and B, each from 0 to 63.
+
+**`gradient-palette`** `colours &optional (first 1) (last 255)` — Function  
+Make colours FIRST to LAST shade evenly through COLOURS, a list of (r g b) lists with each part from 0 to 63, and colour 0 black: (gradient-palette '((0 0 0) (63 0 0) (63 63 0))) goes from black through red to yellow.
+
+**`*palettes*`** — Variable  
+The palettes with names: each a name and the colours GRADIENT-PALETTE passes through.  Push one of your own on, and USE-PALETTE knows it.
+
+**`palette-names`** `` — Function  
+The names USE-PALETTE takes.
+
+**`cube-colour`** `r g b` — Function  
+The colour of CUBE-PALETTE nearest to R, G, B, each from 0 to 5.
+
+**`cube-palette`** `` — Function  
+Make the palette a cube of colours, so that a colour can be asked for by its parts: colours 16 to 231 are every mixture of six levels of red, green and blue (see CUBE-COLOUR), 232 to 255 are greys from dark to light, and 0 to 15 are left as the sixteen colours of the text screen.
+
+**`use-palette`** `name &optional (first 1) (last 255)` — Function  
+Make colours FIRST to LAST the palette called NAME: :RAINBOW, :CUBE (which takes the whole palette), or one of *PALETTES* -- :GREY, :FIRE, :ICE, :OCEAN, :FOREST, :SUNSET, :HEAT, :COPPER, :SEPIA, :AMBER, :PHOSPHOR, :NEON, :PASTEL, :EARTH.  (PALETTE-NAMES lists them.)
+
+**`save-palette`** `` — Function  
+The whole palette as it is now: a vector of 768 numbers, for RESTORE-PALETTE and FADE-PALETTE.
+
+**`fade-palette`** `saved level` — Function  
+Show the palette SAVED (from SAVE-PALETTE) at LEVEL sixty-fourths of its brightness: 0 is black, 64 is the palette itself.  Called once a frame with a rising level, a picture fades in.
+
+**`restore-palette`** `saved` — Function  
+Make the palette what SAVE-PALETTE found.
+
+**`rotate-palette`** `&optional (first 1) (last 255) (step 1)` — Function  
+Move colours FIRST to LAST along by STEP places, the ones pushed off one end coming back at the other: called once a frame, the colours flow through a picture that itself stays as it is.
+
 **`plot`** `x y colour` — Function  
 Set the pixel at X, Y in mode 13h; off the screen, nothing happens.
 
 **`draw-line`** `x0 y0 x1 y1 colour` — Function  
 Draw a line in mode 13h (Bresenham's algorithm).
+
+**`get-pixel`** `x y` — Function  
+The colour of the pixel at X, Y in mode 13h, or NIL off the screen.
+
+**`clear-screen`** `&optional (colour 0)` — Function  
+Make every pixel of mode 13h COLOUR.
+
+**`horizontal-line`** `x0 x1 y colour` — Function  
+Draw the pixels from X0 to X1 of row Y.
+
+**`draw-rectangle`** `x y width height colour` — Function  
+Draw the outline of the rectangle WIDTH by HEIGHT whose top left corner is X, Y.
+
+**`fill-rectangle`** `x y width height colour` — Function  
+Fill the rectangle WIDTH by HEIGHT whose top left corner is X, Y.
+
+**`draw-ellipse`** `cx cy rx ry colour` — Function  
+Draw the outline of the ellipse centred on CX, CY that reaches RX to each side and RY up and down.
+
+**`fill-ellipse`** `cx cy rx ry colour` — Function  
+Fill the ellipse centred on CX, CY that reaches RX to each side and RY up and down.
+
+**`draw-circle`** `cx cy radius colour` — Function  
+Draw a circle centred on CX, CY.  (In mode 13h a pixel is taller than it is wide, so on the screen it is an upright oval: DRAW-ELLIPSE with RY five sixths of RX looks round.)
+
+**`fill-circle`** `cx cy radius colour` — Function  
+Fill a circle centred on CX, CY.
+
+**`draw-polygon`** `points colour` — Function  
+Draw the outline of the polygon whose corners are POINTS, a list of (x y) lists: the last is joined to the first.
+
+**`fill-polygon`** `points colour` — Function  
+Fill the polygon whose corners are POINTS, a list of (x y) lists.  It need not be convex; where it crosses itself, what is inside an odd number of times is filled.
+
+**`fill-area`** `x y colour` — Function  
+Fill, with COLOUR, the patch of one colour that the pixel at X, Y is in: it spreads until it meets other colours or the edge of the screen.
 
 ### `src/gtext.lisp`: Text in the graphics modes: the BIOS's 8 by 8 characters, as pixels.
 
@@ -651,6 +741,17 @@ Send STRING, with a carriage return before every newline.
 **`serial-read-line`** `port` — Function  
 Bytes received up to a carriage return or a line feed, as a string.
 
+### `src/clipboard.lisp`: The clipboard, where the machine has one to share
+
+**`clipboard-present-p`** `` — Function  
+Is there a clipboard to share?  (Interrupt 2Fh, AX=1700h: something answers.)
+
+**`clipboard-text`** `` — Function  
+The text on the clipboard, or NIL if there is none (or no clipboard). Lines end with a newline, as in Lisp.
+
+**`(setf clipboard-text)`** `text` — Function  
+Put TEXT on the clipboard, in place of what is there.  Returns TEXT; does nothing where there is no clipboard, or for more than about 60000 characters.
+
 ### `src/init.lisp`: Setting the library up, at load time and when a saved core starts.
 
 **`doslib-init`** `` — Function  
@@ -757,6 +858,9 @@ True while a read-only buffer may be changed.
 **`define-command`** `name lambda-list &body body` — Macro  
 Define a function that can be bound to a key or run with M-x.
 
+**`*message-log*`** — Variable  
+The echo area's messages, newest first (C-h e shows them).
+
 **`message`** `control &rest arguments` — Function  
 Show a line in the echo area.
 
@@ -811,7 +915,31 @@ Insert STRING at point.
 
 **`*leave-display*`** — Variable  
 
+**`*columns*`** — Variable  
+How many cells wide the screen being drawn on is.
+
+**`*lines*`** — Variable  
+How many rows it has: the last is the echo area.
+
+**`*screen-size*`** — Variable  
+The text screen wanted on the VGA: columns, lines, and the mode -- 3, or a VESA text mode.  Set it with SCREEN-SIZE.
+
+**`*screen-size-hooks*`** — Variable  
+Functions called, with no arguments, when the screen has changed size.
+
+**`*monochrome*`** — Variable  
+True when the screen is a monochrome card's: no colours.
+
 **`reset-display`** `` — Function  
+
+**`display-cells`** `columns lines` — Function  
+Say that the screen being drawn on is COLUMNS by LINES, and lay the windows out for it.
+
+**`screen-sizes`** `` — Function  
+The text screens there are to choose from: a list of (columns lines mode).
+
+**`screen-size`** `columns lines` — Function  
+Ask for a text screen of COLUMNS by LINES (80 by 25, 28 or 50 on any VGA; others if the VESA BIOS has them).  True if there is such a screen.  For EMACSRC.LSP: (doslib-emacs:screen-size 80 50).
 
 **`*attrs*`** — Variable  
 
@@ -869,12 +997,18 @@ Functions to call while waiting for a key at the top level.
 
 **`read-raw-key`** `` — Function  
 
+**`*lossage*`** — Variable  
+The last keys typed, newest first (C-h l shows them).
+
 **`read-key`** `` — Function  
 The next key, by name.  ESC followed by a key is Meta: ESC f is M-f, ESC C-f is C-M-f.
 
 ### `emacs/keymaps.lisp`: Keymaps
 
 **`*global-map*`** — Variable  
+
+**`*modes*`** — Variable  
+The modes that have a keymap, for the help commands.
 
 **`mode-map`** `mode` — Function  
 
@@ -972,6 +1106,15 @@ Delete the character after point.
 **`delete-backward-char`** `` — Command  
 Delete the character before point.
 
+**`*use-clipboard*`** — Variable  
+True if kills go to the shared clipboard and yanks look at it.
+
+**`clipboard-export`** `` — Function  
+Put the newest kill on the shared clipboard, if there is one.
+
+**`clipboard-import`** `` — Function  
+If another program has put text on the shared clipboard, make it the newest kill.
+
 **`kill-new`** `text &optional before` — Function  
 
 **`kill-between`** `l1 c1 l2 c2 &optional before` — Function  
@@ -1001,7 +1144,7 @@ Kill the text between point and the mark.
 Save the text between point and the mark without killing it.
 
 **`yank`** `` — Command  
-Insert the most recently killed text.
+Insert the most recently killed text, or what another program has put on the shared clipboard since.
 
 **`revert-changes`** `from` — Function  
 Undo the newest group of changes on the list FROM (a place holding an undo or redo list); returns the records of what that did, for the other list.
@@ -1085,6 +1228,12 @@ Show all the buffers.
 **`split-window`** `` — Command  
 Split the window in two.
 
+**`toggle-screen-lines`** `` — Command  
+Switch the screen between 25 lines and 50 (43 on an EGA), in place.
+
+**`set-screen-size`** `` — Command  
+Choose the size of the text screen: 80x25, 80x28 and 80x50 on any VGA (80x25 and 80x43 on an EGA), and whatever other text modes the VESA BIOS has.
+
 **`delete-other-windows`** `` — Command  
 Make this window fill the screen.
 
@@ -1100,14 +1249,50 @@ Show the Lisp REPL in another window and go there.
 
 **`command-doc`** `command` — Function  
 
+**`map-bindings`** `function map &optional prefix` — Function  
+Call FUNCTION with the keys ("C-x 2") and the command of every binding in MAP.
+
+**`command-keys`** `command` — Function  
+The keys that run COMMAND: a list of strings, a mode's keys with its name after them ("L [Dired]").
+
+**`describe-key-briefly`** `` — Command  
+Say in the echo area what a key does.
+
 **`describe-key`** `` — Command  
-Say what a key does.
+Show everything about what a key does.
+
+**`describe-command`** `` — Command  
+Show the documentation of a command, and its keys.
+
+**`describe-function`** `` — Command  
+Show the documentation of a function.
+
+**`where-is`** `` — Command  
+Say which keys run a command.
+
+**`describe-variable`** `` — Command  
+Show the value and the documentation of one of the editor's variables.
+
+**`apropos-command`** `` — Command  
+List the commands whose names contain some words, with their keys.
+
+**`apropos-documentation`** `` — Command  
+List the commands and variables whose documentation contains some words.
 
 **`describe-bindings`** `` — Command  
 List every key and what it does.
 
-**`describe-function`** `` — Command  
-Show the documentation of a function.
+**`describe-mode`** `` — Command  
+Say what the mode of this buffer is for, and list its own keys.
+
+**`view-lossage`** `` — Command  
+Show the last keys typed.
+
+**`view-echo-area-messages`** `` — Command  
+Show the messages there have been in the echo area.
+
+**`help-for-help`** `` — Command  
+List the help commands.
 
 **`execute-command`** `` — Command  
 Run a command by name.
@@ -1540,7 +1725,28 @@ Read the buffer's directory again; put point on the file named KEEP if it is the
 
 **`dired-real-entry`** `` — Function  
 
+**`*dired-colours*`** — Variable  
+True if Dired colours its lines by kind of file.  M-x dired-toggle-colours changes it.
+
+**`*dired-faces*`** — Variable  
+Dired's colours, by what is coloured: the heading line, a directory's name, a line flagged for deletion, an ignored file's line, a program's name, the name of Lisp source, and the size and date.  Each is a text attribute: 0 to 15 for a colour on black (8 is dark grey, 9 bright blue, 10 bright green, 12 bright red, 14 yellow, 15 white).
+
+**`*dired-ignored-extensions*`** — Variable  
+A file whose name ends with a dot and one of these is dimmed in Dired: a backup, or something a compiler made that can be made again.
+
+**`*dired-program-extensions*`** — Variable  
+A file whose name ends with a dot and one of these is a program, to Dired.
+
+**`*dired-source-extensions*`** — Variable  
+A file whose name ends with a dot and one of these is Lisp source, to Dired.
+
+**`dired-ignored-p`** `name` — Function  
+Is NAME a backup or a compiler's leavings: file~, #file#, or an ignored extension?
+
 **`dired-attributes`** `b i n` — Function  
+
+**`dired-toggle-colours`** `` — Command  
+Turn Dired's colouring of files by their kind on or off.
 
 **`dired-change-directory`** `dir &optional keep` — Function  
 
@@ -1561,6 +1767,24 @@ Move to the previous file.
 
 **`dired-find-file`** `` — Command  
 Open the file on this line, or go into the directory.
+
+**`view-buffer`** `b` — Function  
+Show buffer B in View mode: to be read, not changed.
+
+**`view-file`** `` — Command  
+Look at a file without being able to change it (View mode: q leaves).
+
+**`view-exit`** `` — Command  
+Leave View mode and keep the buffer, which can now be edited.
+
+**`view-quit`** `` — Command  
+Leave View mode and go back to where the file was viewed from.
+
+**`toggle-read-only`** `` — Command  
+Make this buffer read-only, or let it be changed again.
+
+**`dired-view-file`** `` — Command  
+Look at the file on this line in View mode (q comes back); a directory is gone into.
 
 **`dired-find-file-other-window`** `` — Command  
 Open the file on this line in another window.

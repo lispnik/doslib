@@ -38,7 +38,7 @@
 (defun run-example-program (name function)
   "Give the screen to FUNCTION, then take it back.  An error in it is a message."
   (let ((failure nil))
-    (video-mode 3)                      ; a clean screen, the cursor at the top
+    (text-mode)                      ; a clean screen, the cursor at the top
     (unwind-protect
          (progn
            (handler-case (funcall function)
@@ -56,7 +56,7 @@
              (wait-key)))
       ;; Whatever it did to the mode, the palette, the font or the cursor,
       ;; setting the mode again undoes; the command loop then draws everything.
-      (video-mode 3)
+      (text-mode)
       (setf *calculator-session* -1))   ; an example may have taken F12: see below
     (if failure
         (message "~A stopped with an error: ~A" name failure)

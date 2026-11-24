@@ -5,8 +5,11 @@
 (in-package #:doslib-emacs)
 
 (defvar *global-map* (make-hash-table :test 'equal))
+(defvar *modes* '() "The modes that have a keymap, for the help commands.")
 (defun mode-map (mode)
-  (or (get mode 'keymap) (setf (get mode 'keymap) (make-hash-table :test 'equal))))
+  (or (get mode 'keymap)
+      (progn (pushnew mode *modes*)
+             (setf (get mode 'keymap) (make-hash-table :test 'equal)))))
 (defun split-keys (string)
   (loop with start = 0
         for space = (position #\Space string :start start)

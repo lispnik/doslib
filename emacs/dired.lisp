@@ -95,13 +95,67 @@
   (let ((entry (dired-entry)))
     (when (string= (dentry-name entry) "..") (editor-error "Not on a file"))
     entry))
+;;; Colour, after GNU Emacs's Dired: the heading, directories, the files
+;;; flagged for deletion, and -- dimmed -- the files nobody looks for:
+;;; backups and what compilers leave behind.  All of it can be changed from
+;;; EMACSRC.LSP: (setf doslib-emacs:*dired-colours* nil) for none,
+;;; (push "log" doslib-emacs:*dired-ignored-extensions*) to dim more,
+;;; (setf (getf doslib-emacs:*dired-faces* :directory) 11) for another colour.
+(defvar *dired-colours* t
+  "True if Dired colours its lines by kind of file.  M-x dired-toggle-colours changes it.")
+(defvar *dired-faces*
+  (list :header 14 :directory 9 :flagged 12 :ignored 8 :program 10 :source 15 :details 7)
+  "Dired's colours, by what is coloured: the heading line, a directory's name,
+a line flagged for deletion, an ignored file's line, a program's name, the
+name of Lisp source, and the size and date.  Each is a text attribute: 0 to
+15 for a colour on black (8 is dark grey, 9 bright blue, 10 bright green,
+12 bright red, 14 yellow, 15 white).")
+(defvar *dired-ignored-extensions*
+  (list "fasl" "fas" "bak" "tmp" "old" "obj" "o" "$$$" "swp")
+  "A file whose name ends with a dot and one of these is dimmed in Dired: a
+backup, or something a compiler made that can be made again.")
+(defvar *dired-program-extensions* (list "exe" "com" "bat")
+  "A file whose name ends with a dot and one of these is a program, to Dired.")
+(defvar *dired-source-extensions* (list "lisp" "lsp" "asd" "cl")
+  "A file whose name ends with a dot and one of these is Lisp source, to Dired.")
+(defun name-extension (name)
+  (let ((dot (position #\. name :from-end t)))
+    (if (and dot (plusp dot)) (subseq name (1+ dot)) "")))
+(defun dired-ignored-p (name)
+  "Is NAME a backup or a compiler's leavings: file~, #file#, or an ignored extension?"
+  (let ((n (length name)))
+    (and (plusp n)
+         (or (char= (char name (1- n)) #\~)
+             (and (> n 1) (char= (char name 0) #\#) (char= (char name (1- n)) #\#))
+             (member (name-extension name) *dired-ignored-extensions* :test #'string-equal)))))
+(defun dired-face (entry)
+  "What kind of thing ENTRY is, as a name in *DIRED-FACES*, or NIL for a plain file."
+  (let ((name (dentry-name entry)))
+    (cond ((dentry-dir entry) :directory)
+          ((dired-ignored-p name) :ignored)
+          ((member (name-extension name) *dired-program-extensions* :test #'string-equal) :program)
+          ((member (name-extension name) *dired-source-extensions* :test #'string-equal) :source))))
 (defun dired-attributes (b i n)
-  (if (= i 0)
-      (fill *attrs* 14 :end n)
-      (let ((entry (and (>= i 2) (nth (- i 2) (buf-entries b)))))
-        (cond ((null entry))
-              ((dentry-flag entry) (fill *attrs* 12 :end n))
-              ((dentry-dir entry) (fill *attrs* 11 :start (min n *dired-name-column*) :end n))))))
+  (flet ((face (name) (getf *dired-faces* name 7)))
+    (if (= i 0)
+        (fill *attrs* (face :header) :end n)
+        (let ((entry (and (>= i 2) (nth (- i 2) (buf-entries b))))
+              (name-column (min n *dired-name-column*)))
+          (cond ((null entry))
+                ((dentry-flag entry) (fill *attrs* (face :flagged) :end n))
+                ((not *dired-colours*)  ; as it was before there were colours: only directories
+                 (when (dentry-dir entry) (fill *attrs* 11 :start name-column :end n)))
+                (t (let ((kind (dired-face entry)))
+                     (fill *attrs* (face :details) :end name-column)
+                     (case kind
+                       ((nil))
+                       ;; an ignored file is dimmed from end to end
+                       (:ignored (fill *attrs* (face :ignored) :end n))
+                       (t (fill *attrs* (face kind) :start name-column :end n))))))))))
+(define-command dired-toggle-colours ()
+  "Turn Dired's colouring of files by their kind on or off."
+  (setf *dired-colours* (not *dired-colours*))
+  (message "Dired colours are ~:[off~;on~]" *dired-colours*))
 (defun dired-change-directory (dir &optional keep)
   (unless (directory-name-p dir) (editor-error "~A is not a directory" dir))
   (setf (buf-dir *buf*) dir (buf-name *buf*) dir (buf-line *buf*) 2)
@@ -133,6 +187,67 @@
           ((dentry-dir entry)
            (dired-change-directory (concatenate 'string (dired-path entry) "\\")))
           (t (select-buffer (find-file-buffer (dired-path entry)))))))
+;;; View mode, as in GNU Emacs: a file looked at and not changed.  The
+;;; buffer is read-only and a few keys that would otherwise type are for
+;;; reading: SPC and Backspace page, q puts things back as they were -- the
+;;; buffer goes away again if viewing is what made it -- and e makes it an
+;;; ordinary buffer that can be edited.
+(defun view-buffer (b)
+  "Show buffer B in View mode: to be read, not changed."
+  (let ((from *buf*))
+    (unless (buf-view b)
+      (setf (buf-view b) (list nil (and (not (eq from b)) from) (buf-read-only b))
+            (buf-read-only b) t))
+    (select-buffer b)
+    (message "View mode: SPC and Backspace page, q leaves, e edits")))
+(defun view-file-named (path)
+  (let* ((old (copy-list *buffers*))
+         (b (find-file-buffer path)))
+    (view-buffer b)
+    ;; (a buffer that viewing made is killed by q; one that was there already stays)
+    (unless (member b old) (setf (first (buf-view b)) t))))
+(define-command view-file ()
+  "Look at a file without being able to change it (View mode: q leaves)."
+  (let ((name (read-string "View file: " :complete #'complete-file)))
+    (if (directory-name-p name) (visit name) (view-file-named name))))
+(define-command view-exit ()
+  "Leave View mode and keep the buffer, which can now be edited."
+  (let ((view (buf-view *buf*)))
+    (unless view (editor-error "This buffer is not in View mode"))
+    (setf (buf-read-only *buf*) (third view) (buf-view *buf*) nil)
+    (message "~A can be edited" (buf-name *buf*))))
+(define-command view-quit ()
+  "Leave View mode and go back to where the file was viewed from."
+  (let ((view (buf-view *buf*)) (b *buf*))
+    (unless view (editor-error "This buffer is not in View mode"))
+    (destructuring-bind (made from was-read-only) view
+      (setf (buf-read-only b) was-read-only (buf-view b) nil)
+      (if made
+          (kill-buffer)
+          (setf *message* nil))
+      (when (and from (member from *buffers*)) (select-buffer from)))))
+(define-command toggle-read-only ()
+  "Make this buffer read-only, or let it be changed again."
+  (when (member (buf-mode *buf*) '(dired-mode inspector-mode))
+    (editor-error "~A is always read-only" (buf-name *buf*)))
+  (setf (buf-read-only *buf*) (not (buf-read-only *buf*)) (buf-view *buf*) nil)
+  (message "~A ~:[can be edited~;is read-only~]" (buf-name *buf*) (buf-read-only *buf*)))
+(defun view-key (keys)
+  "Do what the key KEYS means in View mode; false if it means nothing special there."
+  (let ((command (cdr (assoc keys '(("SPC" . scroll-up) ("<backspace>" . scroll-down)
+                                    ("q" . view-quit) ("e" . view-exit)
+                                    ("<" . beginning-of-buffer) (">" . end-of-buffer))
+                             :test #'equal))))
+    (when command
+      (setf *this-command* command)
+      (funcall command)
+      t)))
+(define-command dired-view-file ()
+  "Look at the file on this line in View mode (q comes back); a directory is gone into."
+  (let ((entry (dired-entry)))
+    (if (or (dentry-dir entry) (string= (dentry-name entry) ".."))
+        (dired-find-file)
+        (view-file-named (dired-path entry)))))
 (define-command dired-find-file-other-window ()
   "Open the file on this line in another window."
   (let ((path (dired-path (dired-real-entry))) (directory (dentry-dir (dired-entry))))
@@ -228,4 +343,4 @@
   (dired-read *buf* (ignore-errors (dentry-name (dired-entry)))))
 (define-command dired-quit () "Leave Dired." (kill-buffer))
 (define-command dired-help () "Say what the Dired keys are."
-  (message "RET open  o other window  ^ up  d flag  u unflag  x delete flagged  D delete  R rename  C copy  L load  + mkdir  s sort  g reread  q quit"))
+  (message "RET open  v view  o other window  ^ up  d flag  u unflag  x delete flagged  D delete  R rename  C copy  L load  + mkdir  s sort  g reread  q quit"))
