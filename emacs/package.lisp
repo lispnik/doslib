@@ -43,6 +43,8 @@
           #:find-buf #:nlines #:line-text #:current-line #:point-line
           #:point-col #:goto #:split-lines #:vector-insert #:vector-delete
           #:insert-at #:text-between #:delete-between #:insert #:buffer-string
+          #:*columns* #:*lines* #:screen-size #:screen-sizes #:*screen-size* #:display-cells
+          #:*screen-size-hooks* #:toggle-screen-lines #:set-screen-size
           #:*screen* #:*flush-screen* #:*place-cursor* #:*leave-display* #:reset-display #:*attrs* #:put-string #:set-cursor #:whitespace-p
           #:delimiter-p #:*highlight-words* #:lisp-attributes #:region-bounds
           #:mode-name #:visual-col #:draw-window #:draw-echo #:redisplay

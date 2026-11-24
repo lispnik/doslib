@@ -315,6 +315,7 @@ or as soon as something is evaluated).")
       (fill *live-shown* +live-never+)
       (setf *live-cursor* 0 *live-cursor-shown* 0)
       (if framebuffer (live-open-pixels framebuffer registers) (live-open-mono))
+      (display-cells 80 25)             ; the second display is 80 by 25, whatever the VGA was
       (setf *screen* *live-cells*
             *place-cursor* (lambda (x y) (setf *live-cursor* (max 0 (min 1999 (+ x (* 80 y))))))
             *leave-display* 'live-stop)))

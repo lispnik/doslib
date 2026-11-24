@@ -5,24 +5,89 @@
 (in-package #:doslib-emacs)
 
 ;;; The editor draws character cells -- a character and an attribute byte
-;;; each, 80 by 25 -- into *SCREEN*: normally the VGA's text memory itself.
-;;; To show the editor somewhere else (a second display: see
-;;; emacs-extras/live.lisp), point *SCREEN* at 4000 bytes of your own and
-;;; set *FLUSH-SCREEN*, called with no arguments whenever the cells have
-;;; been drawn, *PLACE-CURSOR*, called with a column and a row, and
-;;; *LEAVE-DISPLAY*, called when the editor exits.
+;;; each, *COLUMNS* by *LINES* of them -- into *SCREEN*: normally the VGA's
+;;; text memory itself.  To show the editor somewhere else (a second
+;;; display: see emacs-extras/live.lisp), point *SCREEN* at memory of your
+;;; own, say how big it is with DISPLAY-CELLS, and set *FLUSH-SCREEN*,
+;;; called with no arguments whenever the cells have been drawn,
+;;; *PLACE-CURSOR*, called with a column and a row, and *LEAVE-DISPLAY*,
+;;; called when the editor exits.
 (defvar *screen* (int-sap #xB8000))
 (defvar *flush-screen* nil)
 (defvar *place-cursor* nil)
 (defvar *leave-display* nil)
+(defvar *columns* 80 "How many cells wide the screen being drawn on is.")
+(defvar *lines* 25 "How many rows it has: the last is the echo area.")
+
+;;; ---- the size of the VGA's text screen
+;;; On a VGA the number of lines is a matter of the font: the same 400
+;;; scan lines show 25 rows of a character 16 lines high, 28 of one 14
+;;; high, or 50 of one 8 high, and the BIOS has all three fonts (INT 10h,
+;;; AX=1114h, 1111h, 1112h).  Loading one is not a change of mode: nothing
+;;; on the screen is lost.  More columns, or more lines than 50, are a mode
+;;; of their own, which a VESA BIOS may have (modes 108h to 10Ch).
+(defvar *screen-size* (list 80 25 3)
+  "The text screen wanted on the VGA: columns, lines, and the mode -- 3, or
+a VESA text mode.  Set it with SCREEN-SIZE.")
+(defvar *display-stale* t "True when the VGA may not be as *SCREEN-SIZE* says.")
+(defvar *display-mode-byte* 3 "What the BIOS calls the mode the editor's screen is in.")
+(defvar *screen-size-hooks* '() "Functions called, with no arguments, when the screen has changed size.")
 (defun reset-display ()
-  (setf *screen* (int-sap #xB8000) *flush-screen* nil *place-cursor* nil *leave-display* nil))
+  (setf *screen* (int-sap #xB8000) *flush-screen* nil *place-cursor* nil *leave-display* nil
+        *display-stale* t))
+(defun display-cells (columns lines)
+  "Say that the screen being drawn on is COLUMNS by LINES, and lay the windows out for it."
+  (unless (and (= columns *columns*) (= lines *lines*))
+    (setf *columns* columns *lines* lines)
+    (when *windows* (layout-windows))
+    (mapc #'funcall *screen-size-hooks*)))
+(defun display-as-wanted-p ()
+  "Is the VGA still the text screen the editor left it as?  (A program that
+drew pictures, or set the mode again, has changed it.)"
+  (and (not *display-stale*)
+       (= (peek #x449) *display-mode-byte*)
+       (= (peek16 #x44A) *columns*) (= (1+ (peek #x484)) *lines*)))
+(defun set-display ()
+  "Make the VGA the text screen *SCREEN-SIZE* asks for, or as near as the
+card comes to it."
+  (destructuring-bind (columns lines mode) *screen-size*
+    (declare (ignore columns))
+    (cond ((= mode 3)
+           (unless (= (peek #x449) 3) (video-mode 3))
+           (unless (= (1+ (peek #x484)) lines)
+             (int86 #x10 :ax (case lines (50 #x1112) (28 #x1111) (t #x1114)) :bx 0)
+             ;; (the BIOS leaves the cursor shaped for the old font)
+             (int86 #x10 :ax #x0100 :cx #x0607)))
+          ((not (vesa-set-mode mode))
+           (setf *screen-size* (list 80 25 3))
+           (video-mode 3))))
+  ;; what the BIOS says came of it is what is drawn on
+  (setf *display-mode-byte* (peek #x449) *display-stale* nil)
+  (display-cells (peek16 #x44A) (1+ (peek #x484))))
+(defun screen-sizes ()
+  "The text screens there are to choose from: a list of (columns lines mode)."
+  (append (list (list 80 25 3) (list 80 28 3) (list 80 50 3))
+          (loop for mode from #x108 to #x10C
+                for info = (ignore-errors (vesa-mode-info mode))
+                when (and info (logbitp 0 (getf info :attributes))
+                          (not (logbitp 4 (getf info :attributes)))     ; text, not graphics
+                          (<= 80 (getf info :width) 132) (<= 25 (getf info :height) 60))
+                  collect (list (getf info :width) (getf info :height) mode))))
+(defun screen-size (columns lines)
+  "Ask for a text screen of COLUMNS by LINES (80 by 25, 28 or 50 on any VGA;
+others if the VESA BIOS has them).  True if there is such a screen.  For
+EMACSRC.LSP: (doslib-emacs:screen-size 80 50)."
+  (let ((size (find-if (lambda (size) (and (= (first size) columns) (= (second size) lines)))
+                       (screen-sizes))))
+    (when size
+      (setf *screen-size* size *display-stale* t)
+      t)))
 (defvar *attrs* (make-array 256 :element-type '(unsigned-byte 8)))
 (defun put-string (x y string attribute &optional (width (length string)))
   (dotimes (i width)
     (let ((code (if (< i (length string)) (char-code (char string i)) 32)))
-      (when (< (+ x i) 80)
-        (setf (sap-ref-16 *screen* (* 2 (+ x i (* 80 y))))
+      (when (< (+ x i) *columns*)
+        (setf (sap-ref-16 *screen* (* 2 (+ x i (* *columns* y))))
               (logior (if (< code 256) code 63) (ash attribute 8)))))))
 (defun set-cursor (x y)
   (if *place-cursor*
@@ -238,10 +303,10 @@ does, unless the line starts inside a string or a comment (see LEX-STATES)."
       (setf (win-top w) (max 0 (- line (floor height 2)))))
     (when current
       (let ((v (visual-col (line-text line b) col)))
-        (cond ((< v 79) (setf (win-hscroll w) 0))       ; it fits: no need to be scrolled
+        (cond ((< v (1- *columns*)) (setf (win-hscroll w) 0))       ; it fits: no need to be scrolled
               ((and (plusp (win-hscroll w)) (<= v (win-hscroll w)))
                (setf (win-hscroll w) (max 0 (- v 10))))
-              ((>= v (+ (win-hscroll w) 79)) (setf (win-hscroll w) (- v 70)))))
+              ((>= v (+ (win-hscroll w) *columns* -1)) (setf (win-hscroll w) (- v (- *columns* 10))))))
       ;; (matching parentheses matter in text and code, not in a mode that draws its own screen)
       (unless (mode-hook (buf-mode b) 'line-attributes)
         (setf match (ignore-errors (matching-paren-position)))))
@@ -256,7 +321,7 @@ does, unless the line starts inside a string or a comment (see LEX-STATES)."
       (dotimes (y height)
         (let ((i (+ (win-top w) y)) (row (+ (win-row w) y)))
           (if (>= i (nlines b))
-              (put-string 0 row "" 7 80)
+              (put-string 0 row "" 7 *columns*)
               (let* ((text (line-text i b)) (n (length text)) (h (win-hscroll w)) (v 0))
                 (ensure-attrs n)
                 (fill *attrs* 7 :end (1+ n))
@@ -282,8 +347,8 @@ does, unless the line starts inside a string or a comment (see LEX-STATES)."
                   (setf (aref *attrs* (cdr match)) #x4F))
                 (flet ((cell (v code attribute)
                          (let ((x (- v h)))
-                           (when (< -1 x 80)
-                             (setf (sap-ref-16 *screen* (* 2 (+ x (* 80 row))))
+                           (when (< -1 x *columns*)
+                             (setf (sap-ref-16 *screen* (* 2 (+ x (* *columns* row))))
                                    (logior (if (< code 256) code 63) (ash attribute 8)))))))
                   (dotimes (k n)
                     (let ((code (char-code (char text k))) (attribute (aref *attrs* k)))
@@ -293,30 +358,31 @@ does, unless the line starts inside a string or a comment (see LEX-STATES)."
                             (setf v next))
                           (progn (cell v code attribute) (incf v)))))
                   (cell v 32 (aref *attrs* n))
-                  (loop for vv from (1+ v) below (+ h 80) do (cell vv 32 7))
+                  (loop for vv from (1+ v) below (+ h *columns*) do (cell vv 32 7))
                   ;; a $ in the margin where the line continues off the screen
                   (when (and (plusp h) (plusp v)) (cell h 36 #x70))
-                  (when (> v (+ h 80)) (cell (+ h 79) 36 #x70))))))))
+                  (when (> v (+ h *columns*)) (cell (+ h *columns* -1) 36 #x70))))))))
     (put-string 0 (+ (win-row w) height)
                 (format nil " ~A ~20A L~D C~D  (~A~:[~; Def~])~@[  ~A~]~@[  ~A~]"
                         (if (buf-modified b) "**" "--") (buf-name b) (1+ line) col
                         (mode-name (buf-mode b)) (and current *defining-macro*)
                         (and (buf-file b) (if (buf-crlf b) "CRLF" "LF"))   ; its line endings
                         (buf-file b))
-                (if current #x70 #x17) 80)))
+                (if current #x70 #x17) *columns*)))
 (defun draw-echo (&optional (text nil prompt))
   ;; Of a prompt too long for the line, the end matters: that is where the
   ;; typing is.  Of a message, the beginning.
-  (put-string 0 24
-              (cond (prompt (subseq text (max 0 (- (length text) 79))))
-                    ((> (length *message*) 79)
-                     (concatenate 'string (subseq *message* 0 76) "..."))
+  (put-string 0 (1- *lines*)
+              (cond (prompt (subseq text (max 0 (- (length text) (1- *columns*)))))
+                    ((> (length *message*) (1- *columns*))
+                     (concatenate 'string (subseq *message* 0 (- *columns* 4)) "..."))
                     (t (or *message* "")))
-              7 80)
+              7 *columns*)
   (when *flush-screen* (funcall *flush-screen*)))
 (defun redisplay ()
-  ;; something drew graphics: back to text (unless the VGA is not ours to draw on)
-  (unless (or *flush-screen* (= (peek #x449) 3)) (video-mode 3))
+  ;; something drew graphics, or set the mode: back to our text screen
+  ;; (unless the VGA is not ours to draw on)
+  (unless (or *flush-screen* (display-as-wanted-p)) (set-display))
   (dolist (w *windows*) (draw-window w))
   (draw-echo)
   (set-cursor (- (visual-col (current-line) (buf-col *buf*)) (win-hscroll *window*))

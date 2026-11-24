@@ -60,7 +60,8 @@ interface)?  Asking turns the reporting on."
 (defun mouse-cell ()
   "The character cell the mouse is in: column, row, the buttons and the wheel."
   (multiple-value-bind (x y buttons wheel) (mouse-position)
-    (values (min 79 (floor x 8)) (min 49 (floor y 8)) buttons wheel)))
+    ;; (the BIOS says how many columns and rows the text screen has)
+    (values (min (1- (peek16 #x44A)) (floor x 8)) (min (peek #x484) (floor y 8)) buttons wheel)))
 (defun mouse-pixel ()
   "The pixel the mouse is at in a graphics mode: x, y, the buttons and the wheel."
   (multiple-value-bind (x y buttons wheel) (mouse-position)

@@ -65,7 +65,7 @@ on the prompt line move down with it; a window that was showing the prompt
 still shows it."
   (let ((text (remove-if (lambda (c) (< (char-code c) 32))        ; colour codes and the like
                          (apply #'format nil control arguments))))
-    (dolist (piece (or (text-wrap text 79) (list "")))
+    (dolist (piece (or (text-wrap text (1- *columns*)) (list "")))
       (let ((at (1- (nlines b))) (mark (buf-mark b)))
         (vector-insert (buf-lines b) at piece)
         (when (>= (buf-line b) at) (incf (buf-line b)))

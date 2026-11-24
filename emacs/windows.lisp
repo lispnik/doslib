@@ -5,9 +5,9 @@
 (in-package #:doslib-emacs)
 
 (defun layout-windows ()
-  (let* ((n (length *windows*)) (each (floor 24 n)) (row 0))
+  (let* ((n (length *windows*)) (each (floor (1- *lines*) n)) (row 0))
     (loop for w in *windows* for i from 1
-          do (let ((rows (if (= i n) (- 24 row) each)))
+          do (let ((rows (if (= i n) (- *lines* 1 row) each)))
                (setf (win-row w) row (win-height w) (1- rows))
                (incf row rows)))))
 (define-command split-window () "Split the window in two."
@@ -15,6 +15,27 @@
   (let ((new (make-win :buf *buf* :top (win-top *window*) :point (cons (point-line) (point-col)))))
     (setf *windows* (loop for w in *windows* collect w when (eq w *window*) collect new))
     (layout-windows)))
+;;; ---- the size of the screen (see screen.lisp)
+(defun show-screen-size ()
+  (redisplay)                           ; (which is what changes the screen)
+  (message "~D columns, ~D lines" *columns* *lines*))
+(define-command toggle-screen-lines ()
+  "Switch the screen between 25 lines and 50, in place."
+  (when *flush-screen* (editor-error "Not while the editor is on another display"))
+  (screen-size 80 (if (= *lines* 25) 50 25))
+  (show-screen-size))
+(define-command set-screen-size ()
+  "Choose the size of the text screen: 80x25, 80x28 and 80x50 on any VGA,
+and whatever other text modes the VESA BIOS has."
+  (when *flush-screen* (editor-error "Not while the editor is on another display"))
+  (let* ((sizes (screen-sizes))
+         (names (mapcar (lambda (size) (format nil "~Dx~D" (first size) (second size))) sizes))
+         (name (string-trim " " (read-string (format nil "Screen size (~{~A~^ ~}): " names))))
+         (size (nth (or (position name names :test #'string-equal)
+                        (editor-error "There is no ~A text screen here" name))
+                    sizes)))
+    (setf *screen-size* size *display-stale* t)
+    (show-screen-size)))
 (define-command delete-other-windows () "Make this window fill the screen."
   (setf *windows* (list *window*))
   (layout-windows))

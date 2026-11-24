@@ -34,6 +34,10 @@ part of a saved EMACS.EXE."
     (when *mouse-there* (mouse-wheel-p)))
   *mouse-there*)
 
+;; When the screen changes size the driver must look at it again (its
+;; limits are the old screen's), and the pointer drawn is no longer there.
+(pushnew (lambda () (setf *mouse-session* -1 *mouse-shown* nil)) *screen-size-hooks*)
+
 (defun erase-mouse-pointer ()
   (when *mouse-shown*
     (destructuring-bind (offset written before) *mouse-shown*
@@ -42,7 +46,7 @@ part of a saved EMACS.EXE."
         (setf (sap-ref-8 *screen* offset) before)))
     (setf *mouse-shown* nil)))
 (defun draw-mouse-pointer (column row)
-  (let* ((offset (1+ (* 2 (+ column (* 80 row)))))
+  (let* ((offset (1+ (* 2 (+ column (* *columns* row)))))
          (before (sap-ref-8 *screen* offset))
          (written (logior (ash (logand before 7) 4) (logand (ash before -4) 7))))
     (when (= written before) (setf written (logxor before #x77)))
@@ -74,7 +78,7 @@ part of a saved EMACS.EXE."
   "The idle hook.  Returns true when the screen needs drawing again."
   (when (and (null *flush-screen*) (mouse-ready-p))     ; (not while M-x live has the display)
     (multiple-value-bind (column row buttons wheel) (mouse-cell)
-      (let ((row (min 24 row)) (left (logtest buttons 1)) (changed nil))
+      (let ((row (min (1- *lines*) row)) (column (min (1- *columns*) column)) (left (logtest buttons 1)) (changed nil))
         (cond ((and left (not *mouse-down*))            ; pressed
                (let ((w (window-at-row row)))
                  (when w
@@ -96,7 +100,7 @@ part of a saved EMACS.EXE."
           (goto (+ (point-line) (* 3 wheel)) (point-col))
           (setf changed t))
         (unless changed
-          (let ((offset (1+ (* 2 (+ column (* 80 row))))))
+          (let ((offset (1+ (* 2 (+ column (* *columns* row))))))
             (unless (and *mouse-shown* (= (first *mouse-shown*) offset)
                          (= (sap-ref-8 *screen* offset) (second *mouse-shown*)))
               (erase-mouse-pointer)

@@ -11,7 +11,7 @@ the text so far and returns the completed text and a list of candidates."
     (loop
       (let ((shown (concatenate 'string prompt text)))
         (draw-echo (concatenate 'string shown hint))
-        (set-cursor (min 79 (length shown)) 24))
+        (set-cursor (min (1- *columns*) (length shown)) (1- *lines*)))
       (setf hint "")
       (let ((key (read-key)))
         (cond ((equal key "RET") (return text))

@@ -171,10 +171,15 @@ class Machine:
         return values
 
     def screen(self):
-        """The text screen: 25 strings."""
-        cells = self.memory(0xB8000, 4000)[0::2]
-        return [''.join(chr(c) if 32 <= c < 127 else ' ' for c in cells[row * 80:row * 80 + 80]).rstrip()
-                for row in range(25)]
+        """The text screen: a string for each row (25 of 80 columns, unless
+        the BIOS says the screen is another size)."""
+        columns = self.memory(0x44A, 1)[0] or 80
+        rows = min(60, max(25, self.memory(0x484, 1)[0] + 1))
+        if columns not in (80, 132):
+            columns, rows = 80, 25
+        cells = self.memory(0xB8000, 2 * columns * rows)[0::2]
+        return [''.join(chr(c) if 32 <= c < 127 else ' ' for c in cells[row * columns:(row + 1) * columns]).rstrip()
+                for row in range(rows)]
 
     def video_mode(self):
         """The BIOS's video mode: 3 is 80x25 text, 0x13 is 320x200."""

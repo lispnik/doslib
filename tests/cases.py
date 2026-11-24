@@ -456,6 +456,16 @@ def all_cases():
         emacs('emacs-dired', '',
               ('key', 'ctrl-x', 'd'), ('see', 'Dired (directory)'), ('key', 'ret'), ('see', 'Directory of D:\\SBCL\\'),
               ('see', 'DEMO.BAT'), ('key', 'f1'), ('see', 'describe-bindings')),
+        # the screen's size: 50 lines and back in place, kept across an example, 28 by name
+        emacs('emacs-lines', 'README.TXT',
+              ('key', 'f11'), ('see', '80 columns, 50 lines'), ('host', screen_rows(50)),
+              ('key', 'ctrl-x', '2'), ('host', screen_rows(50)), ('key', 'ctrl-x', '1'),
+              *meta_x('run-example'), ('type', 'fire'), ('key', 'ret'), ('gfx', 0x13, 20), ('key', 'esc'),
+              ('see', 'fire finished'), ('host', screen_rows(50)),
+              *meta_x('set-screen-size'), ('see', 'Screen size (80x25 80x28 80x50'), ('type', '80x28'),
+              ('key', 'ret'), ('see', '80 columns, 28 lines'), ('host', screen_rows(28)),
+              # (from any other size, F11 goes to 25 lines)
+              ('key', 'f11'), ('see', '80 columns, 25 lines'), ('host', screen_rows(25))),
         emacs('emacs-extras', 'README.TXT',
               ('key', 'f12'), ('see', 'Lisp calculator'), ('type', '6*7'), ('key', 'ret'), ('see', '6*7 = 42'),
               ('key', 'esc'), ('gone', 'Lisp calculator'),
@@ -506,6 +516,19 @@ def display_is(width, height, colours):
                 return
             time.sleep(0.5)
         raise Failure('the display is %d by %d with %d colours' % (session.m.picture_size + (count,)))
+    return step
+
+
+def screen_rows(rows):
+    """The text screen has ROWS rows, and the editor fills it: a mode line
+    on the last but one."""
+    def step(session):
+        time.sleep(1)
+        screen = session.m.screen()
+        if len(screen) != rows:
+            raise Failure('the screen has %d rows, not %d' % (len(screen), rows))
+        if 'README.TXT' not in screen[rows - 2] or ' L' not in screen[rows - 2]:
+            raise Failure('no mode line on row %d: "%s"' % (rows - 2, screen[rows - 2]))
     return step
 
 

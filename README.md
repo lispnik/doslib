@@ -163,6 +163,14 @@ the restarts; so does Ctrl-Break, if the code will not stop. `M-.` goes to
 the definition of the name at the cursor and `M-,` comes back; `C-_`
 undoes and `M-_` redoes.
 
+`F11` switches the screen between 25 lines and 50, in place: on a VGA the
+number of lines is a matter of the font, so nothing is redrawn but the
+editor's own windows. `M-x set-screen-size` offers 80x28 as well, and
+whatever larger text modes (132 columns, 60 lines) the card's VESA BIOS
+has. `(doslib-emacs:screen-size 80 50)` in `EMACSRC.LSP` starts the editor
+that way. A program run from the editor gets the usual 25 lines, and the
+editor takes its own size back afterwards.
+
 ### Editing Lisp
 
 The editor runs in the same Lisp as the code it edits, and treats that
