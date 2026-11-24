@@ -212,7 +212,8 @@ the hex column a hex digit replaces half of it, and other letters are commands."
   (find-if (lambda (b) (and (eq (buf-mode b) 'hex-mode) (funcall test (buf-entries b)))) *buffers*))
 (defun hex-make-buffer (name state)
   (let ((b (make-buf name)))
-    (setf (buf-mode b) 'hex-mode (buf-read-only b) t (buf-entries b) state)
+    (setf (buf-read-only b) t (buf-entries b) state)
+    (set-major-mode 'hex-mode b)
     (hex-fill b)
     b))
 

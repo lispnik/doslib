@@ -33,8 +33,7 @@ command that takes the argument itself (its TAKES-PREFIX property)."
       (dotimes (i (if (and *prefix-argument* (not (and (symbolp command) (get command 'takes-prefix))))
                       *prefix-argument*
                       1))
-        (cond ((and (buf-view *buf*) (view-key keys)))   ; View mode takes a few keys first
-              (command (funcall command))
+        (cond (command (funcall command))
               ((not (or (= (length keys) 1) (equal keys "SPC")))
                (message "~A is not bound to a command" keys) (return))
               ((buf-read-only *buf*) (message "~A is read-only" (buf-name *buf*)) (return))
@@ -58,7 +57,7 @@ EDITOR-DEBUGGER, which shows the interrupted code's restarts.)"
   "Run the editor until C-x C-c."
   (unless (find-buf "*scratch*")
     (let ((b (make-buf "*scratch*")))
-      (setf (buf-mode b) 'lisp-mode)
+      (set-major-mode 'lisp-mode b)
       (insert-at 0 0 (format nil ";; Lisp goes here.  C-x C-e evaluates the expression before the cursor,~%~
 ;; C-c C-z opens the REPL, F1 lists the keys, C-x C-c leaves.~%~%") :b b)
       (setf (buf-line b) 3 (buf-undo b) nil (buf-modified b) nil)))

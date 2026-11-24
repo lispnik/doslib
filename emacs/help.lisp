@@ -114,12 +114,23 @@ after them (\"L [Dired]\")."
     found))
 (define-command describe-variable ()
   "Show the value and the documentation of one of the editor's variables."
-  (let* ((variables (editor-variables))
+  (let* ((variables (append *local-variables* (editor-variables)))
          (name (string-trim " " (read-string "Describe variable: "
                                              :complete (complete-from
                                                         (mapcar #'string-downcase variables)))))
          (symbol (or (find name variables :test #'string-equal)
                      (let ((*package* *repl-package*)) (ignore-errors (read-from-string name))))))
+    ;; a buffer-local variable: this buffer's value, and the one a buffer has that has not set it
+    (when (member symbol *local-variables*)
+      (let ((*package* (or (symbol-package symbol) *package*)) (*print-length* 30) (*print-level* 4))
+        (show-in-help "*help*"
+                      (format nil "~(~A~) is a buffer-local variable~:[~;, kept when the major mode changes~].~%~%~
+Its value in ~A: ~S~:[  (the default)~;~]~%Its default: ~S~%~%~A~%"
+                              symbol (get symbol 'permanent-local)
+                              (buf-name *buf*) (buffer-local symbol) (local-variable-p symbol)
+                              (default-value symbol)
+                              (or (get symbol 'local-documentation) "Not documented."))))
+      (return-from describe-variable))
     (unless (and symbol (symbolp symbol) (boundp symbol)) (editor-error "No variable named ~A" name))
     (show-in-help "*help*"
                   (let ((*package* (or (symbol-package symbol) *package*))
@@ -177,20 +188,55 @@ after them (\"L [Dired]\")."
     (sort rows #'string< :key #'first)))
 (define-command describe-bindings ()
   "List every key and what it does."
-  (let ((mode (buf-mode *buf*)))
+  (let ((mode (buf-mode *buf*)) (minor (active-minor-modes)))
     (show-in-help "*help*"
-                  (format nil "Key           Command                   What it does~%~
-~@[~%In ~A mode:~%~]~:{~13A ~(~25A~) ~A~%~}~%Everywhere:~%~:{~13A ~(~25A~) ~A~%~}"
-                          (and (binding-rows (mode-map mode)) (mode-name mode))
-                          (binding-rows (mode-map mode)) (binding-rows *global-map*)))))
+                  (with-output-to-string (out)
+                    (format out "Key           Command                   What it does~%")
+                    ;; in the order the keys are looked up: minor modes, the major mode, the rest
+                    (dolist (m (append minor (mode-chain mode)))
+                      (let ((rows (binding-rows (mode-map m))))
+                        (when rows
+                          (format out "~%In ~A mode:~%~:{~13A ~(~25A~) ~A~%~}" (mode-name m) rows))))
+                    (format out "~%Everywhere:~%~:{~13A ~(~25A~) ~A~%~}" (binding-rows *global-map*))))))
 (define-command describe-mode ()
-  "Say what the mode of this buffer is for, and list its own keys."
-  (let* ((mode (buf-mode *buf*)) (rows (binding-rows (mode-map mode))))
-    (show-in-help "*help*"
-                  (format nil "This buffer, ~A, is in ~A mode.~%~%~@[~A~%~%~]~
-~:[It has no keys of its own.~%~;Its own keys:~%~]~:{~13A ~(~25A~) ~A~%~}~%~
-The keys that work everywhere are listed by C-h b.~%"
-                          (buf-name *buf*) (mode-name mode) (get mode 'mode-doc) rows rows))))
+  "Say what the modes of this buffer are for, major and minor, and list their keys."
+  (let* ((mode (buf-mode *buf*)) (chain (mode-chain mode)) (minors (active-minor-modes))
+         (locals (buf-locals *buf*)))
+    (show-in-help
+     "*help*"
+     (with-output-to-string (out)
+       ;; first what there is, in a few lines; then the keys, which are many
+       (format out "This buffer, ~A, is in ~A mode (~(~A~)).~%~@[~%~A~%~]"
+               (buf-name *buf*) (mode-name mode) mode (get mode 'mode-doc))
+       (dolist (parent (rest chain))
+         (format out "~%It is derived from ~A mode (~(~A~)).~%" (mode-name parent) parent))
+       (dolist (minor minors)
+         (format out "~%The minor mode ~A is on (M-x ~(~A~) turns it off).~%~@[~A~%~]"
+                 (if (string= (mode-name minor) "") (string-downcase minor) (mode-name minor))
+                 minor (get minor 'mode-doc)))
+       (let ((hooks (loop for m in (append chain minors)
+                          for functions = (hook-functions (format nil "~A-HOOK" m))
+                          when functions collect (list m functions))))
+         (when hooks
+           (format out "~%Hooks:~%~:{  ~(~A~)-hook: ~{~(~A~)~^, ~}~%~}" hooks)))
+       (when locals
+         (format out "~%This buffer's own values:~%~:{  ~(~A~) = ~S~%~}"
+                 (mapcar (lambda (cell) (list (car cell) (cdr cell))) (reverse locals))))
+       (let ((off (remove-if #'minor-mode-p *minor-modes*)))
+         (when off (format out "~%Minor modes that are off: ~{~(~A~)~^, ~}.~%" off)))
+       ;; the keys, in the order they are looked up
+       (dolist (minor minors)
+         (let ((rows (binding-rows (mode-map minor))))
+           (when rows
+             (format out "~%The keys of ~A mode:~%~:{~13A ~(~25A~) ~A~%~}" (mode-name minor) rows))))
+       (let ((rows (binding-rows (mode-map mode))))
+         (format out "~%~:[It has no keys of its own.~%~;Its own keys:~%~]~:{~13A ~(~25A~) ~A~%~}" rows rows))
+       (dolist (parent (rest chain))
+         (let ((rows (binding-rows (mode-map parent))))
+           (when rows
+             (format out "~%The keys of ~A mode, which it is derived from:~%~:{~13A ~(~25A~) ~A~%~}"
+                     (mode-name parent) rows))))
+       (format out "~%The keys that work everywhere are listed by C-h b.~%")))))
 (define-command view-lossage ()
   "Show the last keys typed."
   (show-in-help "*help*"

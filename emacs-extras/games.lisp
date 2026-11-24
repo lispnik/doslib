@@ -405,7 +405,8 @@ game is being played any more (q, or its buffer was killed) the hook goes."
     (unless g
       (setf g (%make-game :buf b :kind kind))
       (push g *game-list*))
-    (setf (buf-mode b) mode (buf-read-only b) t)
+    (ensure-major-mode mode b)
+    (setf (buf-read-only b) t)
     (select-buffer b)
     (if (and (game-live g) (not (game-over g)))
         (setf (game-paused g) nil (game-away g) nil (game-last g) (game-ticks))  ; go on with it

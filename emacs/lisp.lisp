@@ -56,7 +56,7 @@ where it starts and where it ends, or NIL."
 (defun safe-start (line)
   "A line at or before LINE that starts outside any list: the REPL prompt, or
 the nearest line that starts a top-level form."
-  (or (and (eq (buf-mode *buf*) 'repl-mode)
+  (or (and (buffer-mode-p 'repl-mode)
            (let ((prompt (repl-prompt-line))) (and prompt (<= prompt line) prompt)))
       (loop for i from line downto (max 0 (- line 500))
             when (top-level-line-p i) return i)

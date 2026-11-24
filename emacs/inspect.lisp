@@ -58,7 +58,8 @@
                           (brief object 78) description
                           (> count (length parts)) (length parts) count
                           (mapcar (lambda (part) (list (car part) (brief (cdr part)))) parts)))
-    (setf (buf-mode *buf*) 'inspector-mode (buf-read-only *buf*) t)
+    (ensure-major-mode 'inspector-mode)
+    (setf (buf-read-only *buf*) t)
     (when parts (goto +inspector-first-line+ 0))
     (message "RET inspects the part on this line, l goes back, d describes, q leaves")))
 (defun inspect-object (object)

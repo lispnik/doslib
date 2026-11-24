@@ -14,7 +14,8 @@
                            (#x74 . "C-<right>") (#x77 . "C-<home>") (#x75 . "C-<end>")
                            (#x0F . "<backtab>") (#x03 . "C-@") (#x0E . "M-<backspace>")
                            (#x85 . "<f11>") (#x86 . "<f12>") (#x35 . "M-/")
-                           (#xA5 . "M-TAB") (#x2B . "M-\\"))))
+                           (#xA5 . "M-TAB") (#x2B . "M-\\") (#x1A . "M-[") (#x1B . "M-]")
+                           (#x28 . "M-'") (#x29 . "M-`") (#x1C . "M-RET"))))
         (and (= scan #x82) (if shifted "M-_" "M--"))
         (and (<= #x3B scan #x44) (format nil "<f~D>" (- scan #x3A)))
         (and (= scan #x33) (if shifted "M-<" "M-,"))
@@ -51,6 +52,26 @@
                      (setf changed t))))
                (when (and changed (not (key-pressed-p))) (redisplay))))))
 
+(defun key-name (ascii scan shift)
+  "The name of the key the BIOS reports as the character ASCII and the scan
+code SCAN, with the shift state SHIFT (the byte at 0417h)."
+  ;; A key with no character has, for its character, 0 or E0h (the grey
+  ;; keys) -- or F0h, which is what some BIOSes give for Alt with a
+  ;; punctuation key: Alt-. is 3400h from one and 34F0h from another.
+  (let ((key (cond ((and (member ascii '(0 #xE0 #xF0)) (/= scan 0)) (extended-key scan (logtest shift 3)))
+                   ((= ascii 8) (if (= scan #x0E) "<backspace>" "C-h"))
+                   ((= ascii 9) "TAB")
+                   ((= ascii 13) "RET")
+                   ((= ascii 27) "ESC")
+                   ((= ascii 127) "C-<backspace>")
+                   ((< ascii 27) (format nil "C-~C" (code-char (+ ascii 96))))
+                   ((< ascii 32) (format nil "C-~C" (code-char (+ ascii 64))))
+                   ((= ascii 32) (if (logtest shift 4) "C-SPC" "SPC"))
+                   (t (string (code-char ascii))))))
+    ;; Ctrl and Alt together: the BIOS reports the Alt key, and Ctrl is in the shift state
+    (if (and (logtest shift 4) (> (length key) 2) (string= "M-" key :end2 2))
+        (concatenate 'string "C-" key)
+        key)))
 (defun read-raw-key ()
   (if *unread*
       (pop *unread*)
@@ -58,21 +79,8 @@
              ;; (a key of 0000 is what the BIOS leaves behind for Ctrl-Break)
              (ax (loop for ax = (word16 (int86 #x16 :ax #x1000))
                        unless (zerop ax) return ax))
-             (ascii (lo ax)) (scan (hi ax))
              (shift (logior (or early-shift 0) (peek #x417)))
-             (key (cond ((and (member ascii '(0 #xE0)) (/= scan 0)) (extended-key scan (logtest shift 3)))
-                        ((= ascii 8) (if (= scan #x0E) "<backspace>" "C-h"))
-                        ((= ascii 9) "TAB")
-                        ((= ascii 13) "RET")
-                        ((= ascii 27) "ESC")
-                        ((= ascii 127) "C-<backspace>")
-                        ((< ascii 27) (format nil "C-~C" (code-char (+ ascii 96))))
-                        ((< ascii 32) (format nil "C-~C" (code-char (+ ascii 64))))
-                        ((= ascii 32) (if (logtest shift 4) "C-SPC" "SPC"))
-                        (t (string (code-char ascii))))))
-        ;; Ctrl and Alt together: the BIOS reports the Alt key, and Ctrl is in the shift state
-        (when (and (logtest shift 4) (> (length key) 2) (string= "M-" key :end2 2))
-          (setf key (concatenate 'string "C-" key)))
+             (key (key-name (lo ax) (hi ax) shift)))
         (when *defining-macro* (push key *macro-keys*))  ; keys from the keyboard only
         key)))
 (defvar *lossage* '() "The last keys typed, newest first (C-h l shows them).")

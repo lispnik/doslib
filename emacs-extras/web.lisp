@@ -147,8 +147,9 @@ link markers brighter, and the link point is on in reverse."
           (push (list (web-view-page view) (point-line) (point-col)) (web-view-history view))
           (setf (web-view-page view) page))
         (let ((b (make-buf "")))
-          (setf (buf-mode b) 'web-mode (buf-read-only b) t
+          (setf (buf-read-only b) t
                 (gethash b *web-views*) (make-web-view :page page))
+          (set-major-mode 'web-mode b)
           (select-buffer b)))
     (web-render *buf*)
     (message "~D line~:P, ~D link~:P" (length (doslib-examples.browse::page-lines page))

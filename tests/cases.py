@@ -25,6 +25,7 @@ from dosvm import Failure, DOS_PROMPT
 FILES = {
     'T2.TXT': 'one\ntwo\nthree\n',
     'T9.FAS': 'compiled\n', 'T9.BAK': 'old\n',
+    'T8.SCM': '(define (f x)\n  (* x 2))\n',
     'T3.TXT': 'alpha beta\nalpha gamma\n',
     'T4.TXT': 'one\ntwo\n',
     'T6.LSP': '(list (alpha beta) gamma)\n',
@@ -392,7 +393,10 @@ def all_cases():
               ('see', 'DOS.LISP, line'), ('see', '(defmacro with-dos-memory'),
               ('key', 'alt-comma'), ('see', 'VIDEO.LISP'),
               ('key', 'esc', 'dot'), ('see', 'Find definition of: with-dos-memory'), ('key', 'ret'),
-              ('see', 'DOS.LISP, line')),
+              ('see', 'DOS.LISP, line'),
+              # (some BIOSes -- DOSBox-X's -- report Alt with . or , as the character F0h, not 0)
+              ('key', 'shift-alt-semicolon'), ('type', '(list (key-name 240 52 8) (key-name 0 52 8) (key-name 240 51 8))'),
+              ('key', 'ret'), ('see', '("M-." "M-." "M-,")')),
         # the mouse starts in the middle of the screen: a click puts point there (line 13,
         # column 40); a drag downwards selects from there, which M-w copies
         emacs('emacs-mouse', 'T5.TXT', ('see', 'Read 20 lines'), ('wait', 1),
@@ -476,6 +480,9 @@ def all_cases():
               # v views the file on the line: read-only, q comes back and the buffer is gone
               ('key', 'ctrl-s'), ('type', 'T2.TXT'), ('key', 'ret'), ('key', 'v'),
               ('see', '%% T2.TXT'), ('see', '(Text View)'), ('see', 'three'),
+              # (a minor mode: C-h m says so, and lists its keys)
+              ('key', 'ctrl-h', 'm'), ('see', 'The minor mode View is on'), ('see', 'view-quit'),
+              *to_buffer('T2.TXT'), ('see', '(Text View)'),
               ('key', 'x'), ('see', 'T2.TXT is read-only'),
               ('key', 'q'), ('see', '(Dired)'), ('gone', '(Text View)'),
               # e makes it a buffer to edit; v on a directory goes into it, as RET does
@@ -484,6 +491,54 @@ def all_cases():
               ('key', 'shift-alt-comma'), ('key', 'ctrl-s'), ('type', 'CONTRIB'), ('key', 'ret'), ('key', 'v'),
               ('see', 'Directory of D:\\SBCL\\CONTRIB\\'),
               ('key', 'f1'), ('see', 'In Dired mode'), ('see', 'dired-find-file')),
+        # modes: one derived from Lisp mode, with a key, a file extension and a hook of its own;
+        # its parent's hook runs too (and turns a minor mode on); a buffer-local variable
+        emacs('emacs-modes', '',
+              ('key', 'shift-alt-semicolon'),
+              ('type', '(define-major-mode scheme-mode lisp-mode (:lighter "Scheme" :extensions ("scm") '
+                       ':keys (("<f9>" end-of-buffer))) "For Scheme.")'),
+              ('key', 'ret'), ('see', '=> SCHEME-MODE'),
+              ('key', 'shift-alt-semicolon'), ('type', '(defvar-local width 70 "A width.")'), ('key', 'ret'),
+              ('see', '=> WIDTH'),
+              ('key', 'shift-alt-semicolon'), ('type', "(add-hook 'scheme-mode-hook (lambda () (setf width 60)))"),
+              ('key', 'ret'),
+              ('key', 'shift-alt-semicolon'), ('type', "(add-hook 'lisp-mode-hook 'view-mode)"), ('key', 'ret'),
+              ('key', 'ctrl-x', 'ctrl-f'), ('see', 'Find file'), ('type', 'T8.SCM'), ('key', 'ret'),
+              ('see', '%% T8.SCM'), ('see', '(Scheme View)'), ('see', '(define (f x)'),
+              ('key', 'f9'), ('see', 'L3 C0'),
+              ('key', 'shift-alt-semicolon'), ('type', '(list width view-mode)'), ('key', 'ret'), ('see', '=> (60 T)'),
+              ('key', 'ctrl-h', 'm'), ('see', 'is in Scheme mode (scheme-mode)'),
+              ('see', 'It is derived from Lisp mode (lisp-mode)'), ('see', 'scheme-mode-hook'),
+              ('see', 'width = 60'), ('see', 'The minor mode View is on'),
+              ('key', 'ctrl-h', 'v'), ('see', 'Describe variable'), ('type', 'width'), ('key', 'ret'),
+              ('see', 'width is a buffer-local variable'), ('see', 'Its default: 70'),
+              *to_buffer('*scratch*'),
+              ('key', 'shift-alt-semicolon'), ('type', '(list width view-mode)'), ('key', 'ret'), ('see', '=> (70 NIL)'),
+              # a change of major mode is a fresh start: the minor mode goes off, the value is forgotten
+              *to_buffer('T8.SCM'), *meta_x('fundamental-mode'), ('see', 'Text mode'), ('see', '-- T8.SCM'),
+              ('see', '(Text)'),
+              ('key', 'shift-alt-semicolon'), ('type', '(list width view-mode)'), ('key', 'ret'), ('see', '=> (70 NIL)'),
+              # a globalized minor mode: Omit mode in every Dired buffer, one opened afterwards too
+              *meta_x('global-dired-omit-mode'), ('key', 'ctrl-x', 'd'), ('see', 'Dired (directory)'), ('key', 'ret'),
+              ('see', '(Dired Omit)'), ('see', ' omitted, by name')),
+        # Omit mode, a minor mode of Dired's: M-o hides the backups and compiled files, and shows them
+        emacs('emacs-dired-omit', '',
+              ('key', 'ctrl-x', 'd'), ('see', 'Dired (directory)'), ('key', 'ret'), ('see', 'Directory of D:\\SBCL\\'),
+              ('key', 'shift-alt-dot'), ('see', 'T9.FAS'), ('see', 'T9.BAK'), ('see', '(Dired)'),
+              ('key', 'alt-o'), ('see', 'Omit mode is on: '), ('see', '(Dired Omit)'),
+              ('gone', 'T9.FAS'), ('gone', 'T9.BAK'), ('see', 'T7.LSP'),
+              ('key', 'shift-alt-comma'), ('see', ' omitted, by name'),
+              ('key', 'ctrl-h', 'm'), ('see', 'The minor mode Omit is on'), *to_buffer('D:\\SBCL\\'),
+              ('key', 'alt-o'), ('see', 'Omit mode is off'), ('see', '(Dired)'),
+              ('key', 'shift-alt-dot'), ('see', 'T9.FAS'),
+              # ... and it is only for Dired; a minor mode made on the spot, a global one, has its key
+              *to_buffer('*scratch*'), *meta_x('dired-omit-mode'), ('see', 'Omit mode is for Dired buffers'),
+              ('key', 'shift-alt-semicolon'),
+              ('type', '(define-minor-mode top-mode (:lighter "Top" :global t '
+                       ':keys (("<f9>" end-of-buffer))) "Test.")'),
+              ('key', 'ret'), *meta_x('top-mode'), ('see', 'Top mode is on'), ('see', '(Lisp Top)'),
+              ('key', 'shift-alt-comma', 'f9'), ('see', 'L4 C0'),
+              *meta_x('top-mode'), ('see', 'Top mode is off'), ('gone', '(Lisp Top)')),
         # the screen's size: 50 lines and back in place, kept across an example, 28 by name
         emacs('emacs-lines', 'README.TXT',
               ('key', 'f11'), ('see', '80 columns, 50 lines'), ('host', screen_rows(50)),

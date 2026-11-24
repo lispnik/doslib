@@ -9,7 +9,10 @@
   (line 0) (col 0) goal mark mark-active file modified (mode 'fundamental-mode)
   undo redo (crlf t) prompt history (history-index -1)
   read-only                             ; true: commands may not change the text
-  view                                  ; View mode: (made-for-viewing buffer-to-go-back-to)
+  minor-modes                           ; the minor modes that are on here, newest first
+  locals                                ; buffer-local variables: an alist of (name . value)
+  view                                  ; View mode: (made-for-viewing buffer-to-go-back-to was-read-only)
+  (omitted 0)                           ; Dired: how many files Omit mode is hiding
   lex                                   ; what LINE-START-STATE remembers
   dir entries (sort :name))             ; Dired: the directory, its DENTRYs, their order
 ;;; A window that is not selected remembers its own point in POINT; the
@@ -22,7 +25,26 @@
 ;;;   kill-function    (buffer)  the buffer is being killed
 ;;;   ask-before-kill  true: a modified buffer is worth a question even
 ;;;                    though it has no file
-(defun mode-hook (mode name) (and (symbolp mode) (get mode name)))
+;;; A mode can be derived from another (its PARENT-MODE property), and then
+;;; whatever it does not say for itself is its parent's: these properties,
+;;; its keys, and the hooks that run when a buffer enters it.
+(defun mode-parent (mode) (and (symbolp mode) (get mode 'parent-mode)))
+(defun mode-chain (mode)
+  "MODE and the modes it is derived from, the nearest first."
+  (loop for m = mode then (mode-parent m)
+        repeat 20                       ; (a mode made its own ancestor by mistake must not hang the editor)
+        while (and m (symbolp m))
+        collect m))
+(defun mode-derived-p (mode ancestor)
+  "Is MODE the mode ANCESTOR, or derived from it?"
+  (and (member ancestor (mode-chain mode)) t))
+(defun base-mode (mode)
+  "The built-in kind of buffer MODE is, for the code that draws and indents:
+LISP-MODE, REPL-MODE or DIRED-MODE if it is one or is derived from one, or else MODE."
+  (or (find-if (lambda (m) (member m '(lisp-mode repl-mode dired-mode))) (mode-chain mode)) mode))
+(defun mode-hook (mode name)
+  "What MODE says for the property NAME, or the nearest mode it is derived from does."
+  (loop for m in (mode-chain mode) thereis (get m name)))
 (defun buffer-precious-p (b)
   "Would killing B lose work?"
   (and (buf-modified b) (or (buf-file b) (mode-hook (buf-mode b) 'ask-before-kill))))
@@ -68,6 +90,89 @@
                    (progn (when gap (write-char #\Space out) (setf gap nil))
                           (write-char c out)))))))
 (defun editor-error (control &rest arguments) (apply #'error control arguments))
+(defun buffer-mode-p (mode &optional (b *buf*))
+  "Is buffer B in MODE, or in a mode derived from it?"
+  (mode-derived-p (buf-mode b) mode))
+
+;;; ---- hooks
+;;; A hook is a name and a list of functions to call when something
+;;; happens: LISP-MODE-HOOK when a buffer becomes a Lisp buffer, VIEW-MODE-HOOK
+;;; when View mode is turned on or off.  Hooks are known by the spelling of
+;;; their names, so 'LISP-MODE-HOOK means the same hook whatever package
+;;; EMACSRC.LSP is read in.
+(defvar *hooks* (make-hash-table :test 'equal) "Hook name (a string) -> its functions, in order.")
+(defun hook-functions (hook) (gethash (string-upcase (string hook)) *hooks*))
+(defun add-hook (hook function &optional at-end)
+  "Have FUNCTION called whenever HOOK is run: (add-hook 'lisp-mode-hook 'my-setup).
+It goes before the functions already there, or with AT-END after them."
+  (let ((key (string-upcase (string hook))))
+    (unless (member function (gethash key *hooks*))
+      (setf (gethash key *hooks*)
+            (if at-end
+                (append (gethash key *hooks*) (list function))
+                (cons function (gethash key *hooks*)))))
+    function))
+(defun remove-hook (hook function)
+  "Stop FUNCTION being called when HOOK is run."
+  (let ((key (string-upcase (string hook))))
+    (setf (gethash key *hooks*) (remove function (gethash key *hooks*)))
+    nil))
+(defun run-hooks (hook &rest arguments)
+  "Call the functions of HOOK, each with ARGUMENTS.  One that signals an
+error is reported in the echo area, and the rest are still called."
+  (dolist (function (hook-functions hook))
+    (handler-case (apply function arguments)
+      (quit-command (c) (error c))
+      (error (e) (message "Error in ~(~A~): ~A" hook e)))))
+
+;;; ---- buffer-local variables
+;;; A variable of the editor's that can have a value of its own in each
+;;; buffer.  DEFVAR-LOCAL makes the name stand for "its value in the
+;;; current buffer" (a symbol macro on BUFFER-LOCAL), so it is read and
+;;; SETF like any variable: a buffer that has not set it has the default.
+;;; As in GNU Emacs, changing a buffer's major mode forgets the buffer's
+;;; own values, except those of variables declared permanent.
+(defvar *local-variables* '() "Every variable defined with DEFVAR-LOCAL.")
+(defun default-value (name)
+  "The value the buffer-local variable NAME has in a buffer that has not set it."
+  (get name 'local-default))
+(defun (setf default-value) (value name) (setf (get name 'local-default) value))
+(defun local-variable-p (name &optional (b *buf*))
+  "Has buffer B a value of its own for the buffer-local variable NAME?"
+  (and b (assoc name (buf-locals b)) t))
+(defun buffer-local (name &optional (b *buf*))
+  "The value of the buffer-local variable NAME in buffer B: its own, or the default."
+  (let ((cell (and b (assoc name (buf-locals b)))))
+    (if cell (cdr cell) (get name 'local-default))))
+(defun (setf buffer-local) (value name &optional (b *buf*))
+  (let ((cell (and b (assoc name (buf-locals b)))))
+    (cond (cell (setf (cdr cell) value))
+          (b (push (cons name value) (buf-locals b)))
+          (t (setf (get name 'local-default) value)))  ; no buffer yet: the default
+    value))
+(defun kill-local-variable (name &optional (b *buf*))
+  "Forget buffer B's own value of NAME: it has the default again."
+  (setf (buf-locals b) (remove name (buf-locals b) :key #'car))
+  nil)
+(defun kill-all-local-variables (&optional (b *buf*))
+  "Forget every value of its own that buffer B has, but those of permanent variables."
+  (setf (buf-locals b) (remove-if-not (lambda (cell) (get (car cell) 'permanent-local)) (buf-locals b)))
+  nil)
+(defmacro defvar-local (name default &optional documentation &key permanent)
+  "Define NAME as a buffer-local variable whose value is DEFAULT in a buffer
+that has not set it.  NAME is then read and SETF as a variable, and means
+its value in the current buffer.  With PERMANENT, a change of major mode
+does not forget a buffer's value.
+  (defvar-local fill-column 70 \"Where lines are broken.\")
+  (setf fill-column 60)                 ; in this buffer only
+  (setf (default-value 'fill-column) 72)"
+  `(progn
+     (setf (get ',name 'local-default) ,default
+           (get ',name 'local-documentation) ,documentation
+           (get ',name 'permanent-local) ,permanent)
+     (pushnew ',name *local-variables*)
+     (define-symbol-macro ,name (buffer-local ',name))
+     ',name))
 (defun make-buf (name)
   (let ((b (%make-buf :name name)))
     (vector-push-extend "" (buf-lines b))

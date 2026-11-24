@@ -62,21 +62,32 @@
   "Write the buffer's entries out as its text."
   (let ((lines (buf-lines b)) (entries (buf-entries b)))
     (setf (fill-pointer lines) 0)
-    (vector-push-extend (format nil " Directory of ~A   ~D file~:P, by ~(~A~)   (? for help)" (buf-dir b)
+    (vector-push-extend (format nil " Directory of ~A   ~D file~:P~[~:;, ~:*~D omitted~], by ~(~A~)   (? for help)"
+                                (buf-dir b)
                                 (count ".." entries :key #'dentry-name :test-not #'string=)
-                                (buf-sort b))
+                                (buf-omitted b) (buf-sort b))
                         lines)
     (vector-push-extend "" lines)
     (dolist (entry entries) (vector-push-extend (dired-line entry) lines))
     (setf (buf-undo b) nil (buf-redo b) nil (buf-modified b) nil
           (buf-line b) (max 2 (min (buf-line b) (1- (length lines))))
           (buf-col b) (min *dired-name-column* (length (aref lines (buf-line b)))))))
+(defun dired-omit (b entries)
+  "ENTRIES without the files Omit mode hides, if it is on in buffer B (see
+DIRED-IGNORED-P: backups and what compilers leave); directories always stay."
+  (setf (buf-omitted b) 0)
+  (if (minor-mode-p 'dired-omit-mode b)
+      (remove-if (lambda (entry)
+                   (and (not (dentry-dir entry)) (dired-ignored-p (dentry-name entry))
+                        (incf (buf-omitted b))))
+                 entries)
+      entries))
 (defun dired-read (b &optional keep)
   "Read the buffer's directory again; put point on the file named KEEP if it is there."
   (let ((dir (buf-dir b)))
     (setf (buf-entries b)
           (append (unless (string= (parent-directory dir) dir) (list (make-dentry :name ".." :dir t)))
-                  (dired-sorted (read-directory dir) (buf-sort b))))
+                  (dired-sorted (dired-omit b (read-directory dir)) (buf-sort b))))
     (let ((index (and keep (position keep (buf-entries b) :key #'dentry-name :test #'string-equal))))
       (when index (setf (buf-line b) (+ 2 index))))
     (dired-render b)))
@@ -84,8 +95,10 @@
   (or (find dir *buffers* :key #'buf-dir :test #'equalp)
       (let ((b (make-buf dir)))
         (unless (directory-name-p dir) (editor-error "~A is not a directory" dir))
-        (setf (buf-mode b) 'dired-mode (buf-read-only b) t (buf-dir b) dir (buf-line b) 2)
+        (setf (buf-read-only b) t (buf-dir b) dir (buf-line b) 2)
         (dired-read b)
+        ;; (the mode's hooks may turn Omit mode on, which reads the directory again)
+        (set-major-mode 'dired-mode b)
         b)))
 (defun dired-entry ()
   (or (and (>= (point-line) 2) (nth (- (point-line) 2) (buf-entries *buf*)))
@@ -152,6 +165,23 @@ backup, or something a compiler made that can be made again.")
                        ;; an ignored file is dimmed from end to end
                        (:ignored (fill *attrs* (face :ignored) :end n))
                        (t (fill *attrs* (face kind) :start name-column :end n))))))))))
+;;; Omit mode, after GNU Emacs's Dired-X: the same files that are dimmed --
+;;; backups, compiled files, what *DIRED-IGNORED-EXTENSIONS* names -- are
+;;; left out of the listing altogether.  M-o turns it on and off.
+(define-minor-mode dired-omit-mode (:lighter "Omit")
+  "In Dired, hides the files nobody looks for: backups and compiled files
+(those *DIRED-IGNORED-EXTENSIONS* names, FILE~ and #FILE#).  M-o in Dired
+turns it on and off."
+  (unless (buffer-mode-p 'dired-mode buffer)
+    (setf (buf-minor-modes buffer) (remove 'dired-omit-mode (buf-minor-modes buffer)))
+    (editor-error "Omit mode is for Dired buffers"))
+  (dired-read buffer (ignore-errors (dentry-name (nth (- (buf-line buffer) 2) (buf-entries buffer)))))
+  (if on
+      (format nil "Omit mode is on: ~D file~:P hidden" (buf-omitted buffer))
+      "Omit mode is off: every file is shown"))
+(define-globalized-minor-mode global-dired-omit-mode dired-omit-mode
+  (lambda (b) (buffer-mode-p 'dired-mode b))
+  "Omit mode in every Dired buffer, those opened later too.")
 (define-command dired-toggle-colours ()
   "Turn Dired's colouring of files by their kind on or off."
   (setf *dired-colours* (not *dired-colours*))
@@ -187,19 +217,30 @@ backup, or something a compiler made that can be made again.")
           ((dentry-dir entry)
            (dired-change-directory (concatenate 'string (dired-path entry) "\\")))
           (t (select-buffer (find-file-buffer (dired-path entry)))))))
-;;; View mode, as in GNU Emacs: a file looked at and not changed.  The
-;;; buffer is read-only and a few keys that would otherwise type are for
-;;; reading: SPC and Backspace page, q puts things back as they were -- the
-;;; buffer goes away again if viewing is what made it -- and e makes it an
-;;; ordinary buffer that can be edited.
+;;; View mode, as in GNU Emacs: a file looked at and not changed.  It is a
+;;; minor mode: the buffer is read-only while it is on, and a few keys that
+;;; would otherwise type are for reading -- SPC and Backspace page, q puts
+;;; things back as they were (the buffer goes away again if viewing is what
+;;; made it), and e turns the mode off and leaves a buffer to edit.
+(define-minor-mode view-mode
+    (:lighter "View"
+     :keys (("SPC" scroll-up) ("<backspace>" scroll-down) ("q" view-quit) ("e" view-exit)
+            ("<" beginning-of-buffer) (">" end-of-buffer)))
+  "For reading a file without changing it: the buffer is read-only, SPC and
+Backspace page, q goes back to where the file was viewed from, and e
+leaves a buffer that can be edited."
+  (cond (on (unless (buf-view buffer) (setf (buf-view buffer) (list nil nil (buf-read-only buffer))))
+            (setf (buf-read-only buffer) t)
+            "View mode: SPC and Backspace page, q leaves, e edits")
+        (t (setf (buf-read-only buffer) (third (buf-view buffer)) (buf-view buffer) nil)
+           (format nil "~A can be edited" (buf-name buffer)))))
 (defun view-buffer (b)
   "Show buffer B in View mode: to be read, not changed."
   (let ((from *buf*))
-    (unless (buf-view b)
-      (setf (buf-view b) (list nil (and (not (eq from b)) from) (buf-read-only b))
-            (buf-read-only b) t))
     (select-buffer b)
-    (message "View mode: SPC and Backspace page, q leaves, e edits")))
+    (unless (minor-mode-p 'view-mode b)
+      (message "~A" (set-minor-mode 'view-mode t b))
+      (setf (second (buf-view b)) (and (not (eq from b)) from)))))
 (defun view-file-named (path)
   (let* ((old (copy-list *buffers*))
          (b (find-file-buffer path)))
@@ -212,36 +253,25 @@ backup, or something a compiler made that can be made again.")
     (if (directory-name-p name) (visit name) (view-file-named name))))
 (define-command view-exit ()
   "Leave View mode and keep the buffer, which can now be edited."
-  (let ((view (buf-view *buf*)))
-    (unless view (editor-error "This buffer is not in View mode"))
-    (setf (buf-read-only *buf*) (third view) (buf-view *buf*) nil)
-    (message "~A can be edited" (buf-name *buf*))))
+  (unless (minor-mode-p 'view-mode) (editor-error "This buffer is not in View mode"))
+  (message "~A" (set-minor-mode 'view-mode nil)))
 (define-command view-quit ()
   "Leave View mode and go back to where the file was viewed from."
-  (let ((view (buf-view *buf*)) (b *buf*))
-    (unless view (editor-error "This buffer is not in View mode"))
-    (destructuring-bind (made from was-read-only) view
-      (setf (buf-read-only b) was-read-only (buf-view b) nil)
-      (if made
-          (kill-buffer)
-          (setf *message* nil))
-      (when (and from (member from *buffers*)) (select-buffer from)))))
+  (unless (minor-mode-p 'view-mode) (editor-error "This buffer is not in View mode"))
+  (destructuring-bind (made from was-read-only) (buf-view *buf*)
+    (declare (ignore was-read-only))
+    (set-minor-mode 'view-mode nil)
+    (if made (kill-buffer) (setf *message* nil))
+    (when (and from (member from *buffers*)) (select-buffer from))))
 (define-command toggle-read-only ()
   "Make this buffer read-only, or let it be changed again."
-  (when (member (buf-mode *buf*) '(dired-mode inspector-mode))
+  (when (or (buffer-mode-p 'dired-mode) (buffer-mode-p 'inspector-mode))
     (editor-error "~A is always read-only" (buf-name *buf*)))
-  (setf (buf-read-only *buf*) (not (buf-read-only *buf*)) (buf-view *buf*) nil)
+  (cond ((minor-mode-p 'view-mode)      ; out of View mode, and editable
+         (set-minor-mode 'view-mode nil)
+         (setf (buf-read-only *buf*) nil))
+        (t (setf (buf-read-only *buf*) (not (buf-read-only *buf*)))))
   (message "~A ~:[can be edited~;is read-only~]" (buf-name *buf*) (buf-read-only *buf*)))
-(defun view-key (keys)
-  "Do what the key KEYS means in View mode; false if it means nothing special there."
-  (let ((command (cdr (assoc keys '(("SPC" . scroll-up) ("<backspace>" . scroll-down)
-                                    ("q" . view-quit) ("e" . view-exit)
-                                    ("<" . beginning-of-buffer) (">" . end-of-buffer))
-                             :test #'equal))))
-    (when command
-      (setf *this-command* command)
-      (funcall command)
-      t)))
 (define-command dired-view-file ()
   "Look at the file on this line in View mode (q comes back); a directory is gone into."
   (let ((entry (dired-entry)))
@@ -343,4 +373,4 @@ backup, or something a compiler made that can be made again.")
   (dired-read *buf* (ignore-errors (dentry-name (dired-entry)))))
 (define-command dired-quit () "Leave Dired." (kill-buffer))
 (define-command dired-help () "Say what the Dired keys are."
-  (message "RET open  v view  o other window  ^ up  d flag  u unflag  x delete flagged  D delete  R rename  C copy  L load  + mkdir  s sort  g reread  q quit"))
+  (message "RET open  v view  M-o omit  o other window  ^ up  d flag  u unflag  x delete flagged  D delete  R rename  C copy  L load  + mkdir  s sort  g reread  q quit"))

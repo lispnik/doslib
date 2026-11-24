@@ -178,6 +178,47 @@ edit after all (`M-x view-file` does the same for any file, and `C-x C-q`
 makes any buffer read-only or not). The mode line shows `%%` for a buffer
 that may not be changed.
 
+**Modes**, as in GNU Emacs. A buffer has one major mode and any number
+of minor modes, and both are made by definitions that can go in
+`EMACSRC.LSP`:
+
+```lisp
+;; A major mode derived from another has its parent's keys where it binds
+;; none itself, is coloured and indented as its parent is, and runs its
+;; parent's hooks before its own.  M-x scheme-mode, and .scm files.
+(define-major-mode scheme-mode lisp-mode
+    (:lighter "Scheme" :extensions ("scm") :keys (("C-c C-s" save-buffer)))
+  "For Scheme source."
+  (setf fill-column 72))                       ; run when a buffer enters the mode
+
+;; A hook: functions called when a buffer enters a mode.
+(add-hook 'lisp-mode-hook 'my-lisp-setup)
+(add-hook 'dired-mode-hook 'dired-omit-mode)   ; a minor mode's command turns it on
+
+;; A buffer-local variable: read and SETF like any variable, and it means
+;; its value in the current buffer.  A change of major mode forgets it.
+(defvar-local fill-column 70 "Where lines are broken.")
+(setf (default-value 'fill-column) 76)
+
+;; A minor mode: a command, a variable that is true where it is on, a hook
+;; (shout-mode-hook), keys looked up before the major mode's, and a word
+;; in the mode line.  :global t makes it one mode for every buffer.
+(define-minor-mode shout-mode (:lighter "Shout" :keys (("<f9>" upcase-word)))
+  "Capitals at a key."
+  (when on (message "Shouting in ~A" (buf-name buffer))))
+```
+
+Keys are looked up in the minor modes that are on, then the major mode
+and the modes it is derived from, then the keys that work everywhere.
+Changing a buffer's major mode is a fresh start, as in Emacs: its minor
+modes go off and its own values are forgotten (`:permanent t` keeps one).
+`C-h m` describes a buffer's modes, what they are derived from, their
+hooks and the buffer's own values. View mode is a minor mode; so is
+Dired's Omit mode: `M-o` in Dired hides the backups and compiled files
+that are otherwise dimmed, and shows them again (the heading says how
+many are omitted). `M-x global-dired-omit-mode` is a globalized one: Omit
+mode in every Dired buffer, those opened later too.
+
 The editor documents itself, behind `C-h` as in GNU Emacs: `C-h k` says
 what a key does (`C-h c` in one line), `C-h w` where a command is on the
 keyboard, `C-h a` lists the commands with some words in their names and

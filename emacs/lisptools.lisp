@@ -229,7 +229,7 @@ foo, package:foo (exported ones) or package::foo."
                       (let ((*package* package) (*print-case* :downcase) (*print-pretty* t)
                             (*print-right-margin* 78))
                         (format nil "~S~%" expansion)))
-        (setf (buf-mode *buf*) 'lisp-mode)
+        (ensure-major-mode 'lisp-mode)
         (message "~:[Expanded~;That is not a macro call: nothing to expand~]" (equal form expansion))))))
 (define-command expand-macro ()
   "Expand the macro call at point, once, into the buffer *macroexpansion*."

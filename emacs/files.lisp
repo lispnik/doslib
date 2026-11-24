@@ -7,19 +7,15 @@
 (defun select-buffer (b)                ; *BUFFERS* is kept most recently used first
   (setf *buffers* (cons b (remove b *buffers*)) (win-point *window*) nil)
   (setf (win-buf *window*) b (win-top *window*) 0 (win-hscroll *window*) 0 *buf* b))
-(defun mode-for-file (name)
-  (if (member (pathname-type name) '("lsp" "lisp" "cl" "asd" "el") :test #'string-equal)
-      'lisp-mode
-      'fundamental-mode))
 (defun default-crlf (name)
   "Should a new file called NAME have DOS line endings?  Not Lisp source:
 ASDF reads source files as they are, and a carriage return inside a string
 that runs over several lines would become part of the string."
-  (not (eq (mode-for-file name) 'lisp-mode)))
+  (not (mode-derived-p (mode-for-file name) 'lisp-mode)))
 (defun find-file-buffer (name)
   (or (find name *buffers* :key #'buf-file :test #'equalp)
       (let* ((b (make-buf (string-upcase (file-namestring name)))) (lines (buf-lines b)))
-        (setf (buf-file b) name (buf-mode b) (mode-for-file name))
+        (setf (buf-file b) name)
         (cond ((probe-file name)
                (setf (fill-pointer lines) 0 (buf-crlf b) nil)
                ;; The buffer is the file's text cut at its newlines: so a
@@ -41,6 +37,7 @@ that runs over several lines would become part of the string."
                  (message "Read ~D line~:P from ~A" count name)))
               (t (setf (buf-crlf b) (default-crlf name))
                  (message "(New file)")))
+        (set-major-mode (mode-for-file name) b)
         b)))
 (defun visit (name)
   "Show the file NAME in this window -- or, if it is a directory, its listing."
@@ -66,8 +63,9 @@ that runs over several lines would become part of the string."
       (message "Wrote ~D line~:P to ~A (~A line endings)" count name (if (buf-crlf b) "CRLF" "LF")))))
 (defun name-buffer (b file)
   (setf (buf-file b) file
-        (buf-name b) (string-upcase (file-namestring file))
-        (buf-mode b) (mode-for-file file)))
+        (buf-name b) (string-upcase (file-namestring file)))
+  ;; (a new name may mean a new mode; the same mode is not entered again)
+  (unless (eq (buf-mode b) (mode-for-file file)) (set-major-mode (mode-for-file file) b)))
 (define-command save-buffer ()
   "Save the buffer in its file."
   (unless (buf-file *buf*)              ; never had a file: its kind decides the line endings

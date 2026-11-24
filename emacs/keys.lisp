@@ -52,19 +52,19 @@
            ("C-c M-d" disassemble-function) ("C-c C-u" undefine-function)
            ("C-c M-p" set-repl-package) ("C-c M-o" repl-clear)))
   (bind-key (first binding) (second binding)))
-(setf (get 'lisp-mode 'mode-name) "Lisp" (get 'repl-mode 'mode-name) "REPL"
-      (get 'fundamental-mode 'mode-name) "Text")
-(setf (get 'dired-mode 'mode-name) "Dired")
-(setf (get 'lisp-mode 'mode-doc)
-      "For Lisp source: it is coloured and indented as Lisp, the expression
+(define-major-mode fundamental-mode nil (:lighter "Text")
+  "For plain text: nothing is coloured or indented.")
+(define-major-mode lisp-mode fundamental-mode
+    (:lighter "Lisp" :extensions ("lisp" "lsp" "cl" "asd" "el"))
+  "For Lisp source: it is coloured and indented as Lisp, the expression
 commands (C-M-f and the rest) move over it, and what is typed can be
-evaluated in the running Lisp (C-x C-e, C-c C-c, C-c C-k)."
-      (get 'repl-mode 'mode-doc)
-      "The Lisp listener: RET at the end evaluates what was typed after the
-prompt, and on an earlier input brings it down to be changed."
-      (get 'fundamental-mode 'mode-doc) "For plain text: nothing is coloured or indented."
-      (get 'dired-mode 'mode-doc)
-      "A directory, a file to a line: the keys act on the file the cursor is on.")
+evaluated in the running Lisp (C-x C-e, C-c C-c, C-c C-k).")
+;;; (modes for buffers the editor fills itself: no command puts a file in one)
+(define-major-mode repl-mode nil (:lighter "REPL" :command nil)
+  "The Lisp listener: RET at the end evaluates what was typed after the
+prompt, and on an earlier input brings it down to be changed.")
+(define-major-mode dired-mode nil (:lighter "Dired" :command nil)
+  "A directory, a file to a line: the keys act on the file the cursor is on.")
 (bind-key "C-x d" 'dired)
 (dolist (binding
          '(("RET" dired-find-file) ("f" dired-find-file) ("e" dired-find-file)
@@ -73,7 +73,7 @@ prompt, and on an earlier input brings it down to be changed."
            ("p" dired-previous-line) ("<up>" dired-previous-line)
            ("d" dired-flag-deletion) ("u" dired-unflag) ("U" dired-unflag-all) ("x" dired-execute)
            ("D" dired-delete) ("R" dired-rename) ("C" dired-copy) ("+" dired-create-directory)
-           ("v" dired-view-file) ("L" dired-load-file) ("s" dired-sort) ("q" dired-quit) ("?" dired-help) ("h" dired-help)))
+           ("v" dired-view-file) ("M-o" dired-omit-mode) ("L" dired-load-file) ("s" dired-sort) ("q" dired-quit) ("?" dired-help) ("h" dired-help)))
   (bind-key (first binding) (second binding) 'dired-mode))
 (bind-key "RET" 'newline-and-indent 'lisp-mode)
 (bind-key "TAB" 'indent-line 'lisp-mode)

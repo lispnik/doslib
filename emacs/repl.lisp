@@ -7,7 +7,7 @@
 (defun repl-buffer ()
   (or (find-buf "*repl*")
       (let ((b (make-buf "*repl*")))
-        (setf (buf-mode b) 'repl-mode)
+        (set-major-mode 'repl-mode b)
         (setf (aref (buf-lines b) 0)
               (format nil "; ~A ~A on ~A ~A" (lisp-implementation-type)
                       (lisp-implementation-version) (software-type) (software-version)))

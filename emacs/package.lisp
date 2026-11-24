@@ -114,6 +114,16 @@
           #:dired-quit #:dired-help #:layout-windows #:split-window
           #:delete-other-windows #:other-window #:switch-to-repl #:first-line
           #:command-doc #:describe-key #:describe-bindings #:describe-function
+          #:key-name #:define-major-mode #:set-major-mode #:ensure-major-mode #:mode-parent #:mode-chain
+          #:mode-derived-p #:buffer-mode-p #:base-mode #:*major-modes* #:*auto-modes* #:mode-for-file
+          #:fundamental-mode #:lisp-mode #:repl-mode #:dired-mode
+          #:add-hook #:remove-hook #:run-hooks #:hook-functions
+          #:defvar-local #:buffer-local #:default-value #:local-variable-p #:kill-local-variable
+          #:kill-all-local-variables #:*local-variables* #:buf-locals
+          #:define-globalized-minor-mode #:global-dired-omit-mode #:*globalized-modes*
+          #:buffer #:on
+          #:define-minor-mode #:minor-mode-p #:set-minor-mode #:active-minor-modes #:*minor-modes*
+          #:*global-minor-modes* #:buf-minor-modes #:view-mode #:dired-omit-mode #:*dired-omit*
           #:view-file #:view-exit #:view-quit #:view-buffer #:toggle-read-only #:dired-view-file
           #:buf-view #:*dired-colours* #:*dired-faces* #:*dired-ignored-extensions*
           #:*dired-program-extensions* #:*dired-source-extensions* #:dired-ignored-p

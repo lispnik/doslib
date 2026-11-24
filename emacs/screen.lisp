@@ -234,7 +234,7 @@ starts inside."
 (defun lex-states (&optional (b *buf*))
   "A vector with what each line of B starts inside -- :STRING, a number (how
 deep in #| |# comments) or NIL -- or NIL if B is not a Lisp file."
-  (when (eq (buf-mode b) 'lisp-mode)
+  (when (buffer-mode-p 'lisp-mode b)
     (flet ((lines-vector () (make-array 64 :adjustable t :fill-pointer 0)))
       (let* ((cache (or (buf-lex b)
                         (setf (buf-lex b) (list (lines-vector) (lines-vector) (lines-vector) nil))))
@@ -320,7 +320,7 @@ does, unless the line starts inside a string or a comment (see LEX-STATES)."
       ;; (matching parentheses matter in text and code, not in a mode that draws its own screen)
       (unless (mode-hook (buf-mode b) 'line-attributes)
         (setf match (ignore-errors (matching-paren-position)))))
-    (case (buf-mode b)
+    (case (base-mode (buf-mode b))
       (lisp-mode (setf states (ignore-errors (lex-states b))))
       (repl-mode (setf prompt-line (repl-prompt-line b))
        (when prompt-line
@@ -335,13 +335,13 @@ does, unless the line starts inside a string or a comment (see LEX-STATES)."
               (let* ((text (line-text i b)) (n (length text)) (h (win-hscroll w)) (v 0))
                 (ensure-attrs n)
                 (fill *attrs* 7 :end (1+ n))
-                (case (buf-mode b)
+                (case (base-mode (buf-mode b))
                   ;; (a mode from elsewhere colours its lines by a function
                   ;; on its name: see MODE-HOOK in buffers.lisp)
                   ((dired-mode lisp-mode repl-mode))
                   (t (let ((colour (mode-hook (buf-mode b) 'line-attributes)))
                        (when colour (funcall colour b i text)))))
-                (case (buf-mode b)
+                (case (base-mode (buf-mode b))
                   (dired-mode (dired-attributes b i n))
                   ;; (a string or a #| |# comment may have begun on an earlier line)
                   (lisp-mode (lisp-attributes text (and states (aref states i))))
@@ -377,11 +377,13 @@ does, unless the line starts inside a string or a comment (see LEX-STATES)."
                   (when (and (plusp h) (plusp v)) (cell h 36 #x70))
                   (when (> v (+ h *columns*)) (cell (+ h *columns* -1) 36 #x70))))))))
     (put-string 0 (+ (win-row w) height)
-                (format nil " ~A ~20A L~D C~D  (~A~:[~; View~]~:[~; Def~])~@[  ~A~]~@[  ~A~]"
+                (format nil " ~A ~20A L~D C~D  (~A~{ ~A~}~:[~; Def~])~@[  ~A~]~@[  ~A~]"
                         ;; (as in GNU Emacs: ** changed, %% may not be changed)
                         (cond ((buf-modified b) "**") ((buf-read-only b) "%%") (t "--"))
                         (buf-name b) (1+ line) col
-                        (mode-name (buf-mode b)) (buf-view b) (and current *defining-macro*)
+                        (mode-name (buf-mode b))
+                        (remove "" (mapcar #'mode-name (reverse (active-minor-modes b))) :test #'string=)
+                        (and current *defining-macro*)
                         (and (buf-file b) (if (buf-crlf b) "CRLF" "LF"))   ; its line endings
                         (buf-file b))
                 (if current #x70 #x17) *columns*)))

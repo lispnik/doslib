@@ -77,6 +77,8 @@ SCRIPT = r'''(in-package :doslib-emacs)
                                  (with-output-to-string (*standard-output*)
                                    (funcall (find-symbol "RUN" "DOSLIB-EXAMPLES") "fire")))
                          t)))
+          ;; (this BIOS gives Alt-. as 34F0h: the key must still be M-.)
+          (format out "keys=~A ~A~%" (key-name #xF0 #x34 8) (key-name #xF0 #x33 8))
           (format out "done=T~%"))
       (error (e) (format out "error=~A~%" e))))
   (text-mode)
@@ -149,6 +151,8 @@ def check(machine, lines):
                        ('yank', 'the clipboard was not taken for a yank')):
         if values.get(name) != 'T':
             wrong.append(what)
+    if values.get('keys') != 'M-. M-,':
+        wrong.append('Alt with . and , are %s' % values.get('keys'))
     if card != 'VGA' and values.get('refused') != 'T':
         wrong.append('an example that needs a VGA did not say so')
     return wrong

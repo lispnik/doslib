@@ -55,7 +55,7 @@
   "A buffer called NAME in IRC mode; one left over from an earlier connection is used again."
   (let* ((old (find-buf name))
          (b (if (and old (eq (buf-mode old) 'irc-mode)) old (make-buf name))))
-    (setf (buf-mode b) 'irc-mode)
+    (ensure-major-mode 'irc-mode b)
     (irc-set-prompt b prompt)
     (setf (buf-line b) (1- (nlines b)) (buf-col b) (length (line-text (buf-line b) b)))
     b))

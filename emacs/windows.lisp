@@ -51,7 +51,7 @@
 (define-command switch-to-repl ()
   "Show the Lisp REPL in another window and go there."
   (when (null (rest *windows*)) (split-window))
-  (unless (eq (buf-mode *buf*) 'repl-mode)
+  (unless (buffer-mode-p 'repl-mode)
     (other-window)
     (select-buffer (repl-buffer))
     (end-of-buffer)))
