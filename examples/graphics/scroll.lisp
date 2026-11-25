@@ -42,17 +42,19 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.scroll
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.scroll)
 
-(defconstant +row-bytes+ 88)            ; addresses from one row to the next: 352 pixels
-(defconstant +rows+ 14)                 ; tiles down the scrolling part: 224 pixels
-(defconstant +map-width+ 240)           ; tiles across the map: 3,840 pixels
-(defconstant +base+ (* 16 +row-bytes+)) ; the map starts after the 16 rows of the status bar
-(defconstant +room+ 22)                 ; columns of tiles that fit in a row of memory
-(defconstant +redraw+ (* 320 16 +rows+)) ; bytes to draw what is displayed of the map
-(defconstant +limit+ (- (* 16 +map-width+) 320)) ; the furthest the picture can scroll
+(eval-when (:compile-toplevel :load-toplevel :execute)   ; known when compiling, for #.
+  (defconstant +row-bytes+ 88)            ; addresses from one row to the next: 352 pixels
+  (defconstant +rows+ 14)                 ; tiles down the scrolling part: 224 pixels
+  (defconstant +map-width+ 240)           ; tiles across the map: 3,840 pixels
+  (defconstant +base+ (* 16 +row-bytes+)) ; the map starts after the 16 rows of the status bar
+  (defconstant +room+ 22)                 ; columns of tiles that fit in a row of memory
+  (defconstant +redraw+ (* 320 16 +rows+)) ; bytes to draw what is displayed of the map
+  (defconstant +limit+ (- (* 16 +map-width+) 320)) ; the furthest the picture can scroll
+  )
 
 ;;; ---- the mode
 ;;; (MODE-X, 320x240 in four planes, is the library's, with the writers of the VGA's
@@ -83,11 +85,13 @@
     (vga-attribute #x13 (* 2 (logand x 3)))))   ; and the panning, used at once, during it
 
 ;;; ---- the tiles: 16 by 16, kept a plane at a time as video memory wants them
-(defconstant +sky+ 0) (defconstant +cloud-left+ 1) (defconstant +cloud+ 2)
-(defconstant +cloud-right+ 3) (defconstant +grass+ 4) (defconstant +earth+ 5)
-(defconstant +rock+ 6) (defconstant +hill+ 7) (defconstant +hill-up+ 8)
-(defconstant +hill-down+ 9) (defconstant +trunk+ 10) (defconstant +leaves+ 11)
-(defconstant +tiles+ 12)
+(eval-when (:compile-toplevel :load-toplevel :execute)   ; known when compiling, for #.
+  (defconstant +sky+ 0) (defconstant +cloud-left+ 1) (defconstant +cloud+ 2)
+  (defconstant +cloud-right+ 3) (defconstant +grass+ 4) (defconstant +earth+ 5)
+  (defconstant +rock+ 6) (defconstant +hill+ 7) (defconstant +hill-up+ 8)
+  (defconstant +hill-down+ 9) (defconstant +trunk+ 10) (defconstant +leaves+ 11)
+  (defconstant +tiles+ 12)
+  )
 
 (defun set-colours ()
   (loop for (red green blue) in '((0 0 0) (22 38 60) (62 62 63) (48 52 60) (18 48 12) (10 38 8)

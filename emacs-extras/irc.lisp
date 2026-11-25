@@ -103,7 +103,7 @@ still shows it."
     (when conn
       (setf *irc* nil)
       (remove-idle-hook 'irc-idle)
-      (ignore-errors (sb-bsd-sockets:socket-close (irc-conn-socket conn)))
+      (ignore-errors (doslib-sockets:socket-close (irc-conn-socket conn)))
       (dolist (b (irc-buffers conn))
         (irc-append b "*** Disconnected from ~A: ~A" (irc-conn-host conn) reason))
       (message "IRC: disconnected from ~A: ~A" (irc-conn-host conn) reason)
@@ -120,7 +120,7 @@ still shows it."
       (setf (aref octets (length line)) 13 (aref octets (1+ (length line))) 10)
       (handler-case
           (loop while (plusp (length octets))   ; a send may take only part of it
-                do (let ((sent (sb-bsd-sockets:socket-send (irc-conn-socket conn) octets nil)))
+                do (let ((sent (doslib-sockets:socket-send (irc-conn-socket conn) octets nil)))
                      (unless (and sent (plusp sent)) (error "nothing could be sent"))
                      (setf octets (subseq octets sent))))
         (error (e)
@@ -252,8 +252,8 @@ still shows it."
              (when (and (irc-target-joined target) (irc-channel-p (irc-target-name target)))
                (irc-send "PART ~A" (irc-target-name target)))))
          (let ((socket (irc-conn-socket conn)))
-           (when (sb-unix:unix-simple-poll (sb-bsd-sockets:socket-file-descriptor socket) :input 0)
-             (let ((n (nth-value 1 (sb-bsd-sockets:socket-receive socket *irc-octets* nil))))
+           (when (doslib-sockets:socket-ready-p socket 0)
+             (let ((n (nth-value 1 (doslib-sockets:socket-receive socket *irc-octets* nil))))
                (cond ((or (null n) (<= n 0)) (irc-close "the server closed the connection"))
                      (t (let ((data (make-string n)))
                           (dotimes (i n) (setf (char data i) (code-char (aref *irc-octets* i))))
@@ -385,16 +385,16 @@ nick and a channel to join.  Each channel gets a buffer; type at its prompt."
       (setf channel (concatenate 'string "#" channel)))
     (setf *irc-last-server* where *irc-last-nick* nick)
     (draw-echo (format nil "Connecting to ~A, port ~D ..." host port))
-    (let ((socket (make-instance 'sb-bsd-sockets:inet-socket :type :stream :protocol :tcp)))
+    (let ((socket (make-instance 'doslib-sockets:inet-socket :type :stream :protocol :tcp)))
       (handler-case
-          (sb-bsd-sockets:socket-connect
+          (doslib-sockets:socket-connect
            socket
            (if (every (lambda (c) (or (digit-char-p c) (char= c #\.))) host)
-               (sb-bsd-sockets:make-inet-address host)
-               (sb-bsd-sockets:host-ent-address (sb-bsd-sockets:get-host-by-name host)))
+               (doslib-sockets:make-inet-address host)
+               (doslib-sockets:host-ent-address (doslib-sockets:get-host-by-name host)))
            port)
         (error (e)
-          (ignore-errors (sb-bsd-sockets:socket-close socket))
+          (ignore-errors (doslib-sockets:socket-close socket))
           (editor-error "Can't connect to ~A: ~A" where e)))
       (let ((b (irc-make-buffer (format nil "*irc ~A*" host) "> ")))
         (setf *irc* (make-irc-conn :socket socket :host host :nick nick :buffer b :channel channel))

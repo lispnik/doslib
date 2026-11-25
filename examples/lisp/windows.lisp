@@ -14,7 +14,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.windows
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.windows)
 
@@ -158,7 +158,7 @@
                      (text counter) (format nil "Count: ~D" count)
                      (value level) (/ (mod count 13) 12))))
            (show-memory ()
-             (setf (text memory) (format nil "Heap in use: ~:D bytes" (sb-kernel:dynamic-usage)))))
+             (setf (text memory) (format nil "Heap in use: ~:D bytes" (heap-bytes-used)))))
       (show-memory)
       (setf *windows*
             (list
@@ -174,7 +174,7 @@
                                                       (lisp-implementation-version)))
                   memory
                   (make-instance 'button :x 2 :y 4 :text "Collect garbage"
-                                         :action (lambda (b) (declare (ignore b)) (gc :full t) (show-memory)))
+                                         :action (lambda (b) (declare (ignore b)) (collect-garbage) (show-memory)))
                   (make-instance 'button :x 24 :y 4 :text "Refresh"
                                          :action (lambda (b) (declare (ignore b)) (show-memory))))
              (add (make-instance 'window :x 50 :y 12 :width 26 :height 11 :title "Desktop")

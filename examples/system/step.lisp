@@ -24,7 +24,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.step
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.step)
 
@@ -70,7 +70,7 @@
 (defun (setf register) (value i) (setf (sap-ref-32 *registers* (* 4 i)) value))
 (defun step-function ()
   "The runtime's dos_single_step, or NIL in a runtime that has none."
-  (let ((address (find-foreign-symbol-address "dos_single_step")))
+  (let ((address (foreign-variable-address "dos_single_step")))
     (and address (int-sap address))))
 (defun single-step ()
   "Run the instruction at EIP.  Returns the exception that ended it: 1 is the step itself."
@@ -81,7 +81,8 @@
 (defun disassembly (code length)
   "The instructions at CODE as a list of (offset . text), from SBCL's disassembler."
   (let ((text (with-output-to-string (out)
-                (sb-disassem:disassemble-memory code length :stream out)))
+                #+clisp out                 ; (CLISP has no disassembler for x86)
+                #+sbcl (sb-disassem:disassemble-memory code length :stream out)))
         (base (sap-int code)) (lines '()))
     (with-input-from-string (in text)
       (loop for line = (read-line in nil) while line
@@ -188,7 +189,7 @@
   (cond ((equal name "?")
          (format t "~&Routines:~:{ ~A~*~*~*~}.~%" *routines*))
         ((null (step-function))
-         (format t "~&This SBCL's runtime has no dos_single_step: it is older than this example.~%"))
+         (format t "~&This Lisp's runtime has no dos_single_step: step needs the DOS port of SBCL.~%"))
         (t
          (setf *registers* (alien-sap (make-alien (unsigned 32) 13))
                *stack* (alien-sap (make-alien (unsigned 8) +stack-bytes+)))

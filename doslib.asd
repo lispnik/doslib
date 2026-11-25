@@ -11,7 +11,8 @@
   :version "0.2.0"
   :pathname "src"
   :serial t
-  :components ((:file "package")
+  :components ((:file "compat")
+               (:file "package")
                (:file "machine")
                (:file "ports")
                (:file "dos")
@@ -41,9 +42,10 @@
 (defsystem "doslib/examples"
   :description "Example programs for DOSLIB: graphics, system information, Lisp, networking."
   :version "0.2.0"
-  :depends-on ("doslib" "sb-bsd-sockets")
+  :depends-on ("doslib" (:feature :sbcl "sb-bsd-sockets"))
   :pathname "examples"
   :components ((:file "package")
+               (:file "sockets")
                (:module "graphics"
                 :depends-on ("package")
                 :components ((:file "blit")
@@ -140,7 +142,7 @@
                              (:file "tune")
                              (:file "speaker" :depends-on ("adlib"))))
                (:module "network"
-                :depends-on ("package")
+                :depends-on ("package" "sockets")
                 :components ((:file "browse")
                              (:file "files")
                              (:file "irc")
@@ -157,6 +159,7 @@
   :pathname "emacs"
   :serial t
   :components ((:file "package")
+               (:file "compat")
                (:file "buffers")
                (:file "screen")
                (:file "keyboard")

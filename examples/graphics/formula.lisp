@@ -19,7 +19,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.formula
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main #:compile-formula))
 (in-package #:doslib-examples.formula)
 
@@ -69,7 +69,7 @@ what was wrong with it.  The function takes video memory and the time."
       (values nil (substitute #\Space #\Newline (princ-to-string condition))))))
 
 (defun code-size (function)
-  (sb-kernel:%code-text-size (sb-kernel:fun-code-header function)))
+  (code-bytes function))
 
 (defun show-code (text function milliseconds &optional trouble)
   "The text screen: the formula and the machine code made from it."
@@ -80,7 +80,7 @@ what was wrong with it.  The function takes video memory and the time."
   (format t "~&The formula:~%  ~A~%~%" text)
   (format t "compiled to ~D bytes of machine code in ~D ms.  It begins:~%~%"
           (code-size function) milliseconds)
-  (let ((listing (with-output-to-string (out) (disassemble function :stream out)))
+  (let ((listing (disassembly-string function))
         (shown 0))
     (with-input-from-string (in listing)
       (loop for line = (read-line in nil)

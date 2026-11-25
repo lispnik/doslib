@@ -28,7 +28,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.term
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.term)
 
@@ -56,7 +56,7 @@
         do (setf (sap-ref-16 *text-screen* (* 2 i)) blank)))
 
 (defun scroll-up ()
-  (sb-kernel:system-area-ub8-copy *text-screen* 160 *text-screen* 0 (* 160 (1- +rows+)))
+  (copy-memory *text-screen* 160 *text-screen* 0 (* 160 (1- +rows+)))
   (clear-cells (* 80 (1- +rows+)) (* 80 +rows+)))
 
 (defun line-feed ()

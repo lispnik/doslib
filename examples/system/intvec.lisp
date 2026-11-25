@@ -15,7 +15,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.intvec
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.intvec)
 
@@ -43,6 +43,7 @@
 (defvar *client*)                       ; unsigned client(void): asks for the 1000th
                                         ; prime, knowing only "INT 60h"
 (defun make-code ()
+  #+sbcl
   (setf *callback*
         (alien-sap (sb-alien::alien-lambda unsigned ((ax unsigned) (bx unsigned)
                                                      (cx unsigned) (dx unsigned))
@@ -55,8 +56,12 @@
                  #x89 #x44 #x24 28 #x61 #xCF)))         ; mov [esp+28],eax; popad; iretd
   (setf *client* (machine-code #x53 #xB8 2 0 0 0 #xBB #xE8 3 0 0   ; mov eax,2; mov ebx,1000
                                #xCD #x60 #x5B #xC3)))            ; int 60h; pop ebx; ret
+;;; Part 1 needs machine code to call a Lisp function, which SBCL's
+;;; ALIEN-LAMBDA makes possible and CLISP (here, with no FFI) does not.
 (defun demo ()
-  (make-code)
+  #+clisp (format t "~&The Lisp function as the handler of INT 60h needs SBCL; the timer tick follows.~%")
+  #+sbcl (make-code)
+  #+sbcl
   (multiple-value-bind (old-selector old-offset) (get-vector #x60)
     (format t "~&INT 60h was ~4,'0X:~8,'0X~%" old-selector old-offset)
     (set-vector #x60 (code-selector) (sap-int *int60*))
@@ -79,12 +84,12 @@
     (multiple-value-bind (old-selector old-offset) (get-vector #x1C)
       (let ((isr (apply #'machine-code
                         `(#x1E #x50 #x66 #xB8 ,(lo ds) ,(hi ds) #x8E #xD8   ; push ds,eax; mov ds,flat
-                          #xFF #x05 ,@(bytes32 (sap-int counter))           ; inc dword [counter]
+                          #xFF #x05 ,@(bytes32 (near-address (sap-int counter)))           ; inc dword [counter]
                           #x58 #x1F                                         ; pop eax, ds
                           #xEA ,@(bytes32 old-offset) ,(lo old-selector) ,(hi old-selector)))))
         (format t "Timer tick (INT 1Ch) hooked at ~8,'0X; counting for 2 seconds...~%"
                 (sap-int isr))
-        (set-vector #x1C (code-selector) (sap-int isr))
+        (set-vector #x1C (code-selector) (near-address (sap-int isr)))
         (let ((sum 0d0))                ; Lisp is busy; the ticks arrive anyway
           (loop with start = (get-internal-real-time)
                 until (>= (- (get-internal-real-time) start)

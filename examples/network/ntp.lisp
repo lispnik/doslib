@@ -13,12 +13,13 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.ntp
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib #:sb-bsd-sockets)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib
+        #:doslib-sockets)
   (:export #:main))
 (in-package #:doslib-examples.ntp)
 
 (defun now ()                           ; universal time, with a fraction
-  (multiple-value-bind (seconds microseconds) (sb-ext:get-time-of-day)
+  (multiple-value-bind (seconds microseconds) (time-of-day)
     (+ seconds 2208988800 (/ microseconds 1000000))))
 (defun timestamp (packet offset)        ; 32 bits of seconds, 32 bits of fraction
   (flet ((word (i) (logior (ash (aref packet i) 24) (ash (aref packet (+ i 1)) 16)
@@ -35,7 +36,7 @@ get the right time), the round-trip delay, the server's stratum and address."
            (setf (aref packet 0) #x23)  ; no leap warning, version 4, mode 3 (client)
            (let ((sent (now)))
              (socket-send socket packet 48 :address (list address 123))
-             (unless (sb-unix:unix-simple-poll (socket-file-descriptor socket) :input 5000)
+             (unless (socket-ready-p socket 5000)
                (error "No answer from ~A" host))
              (socket-receive socket packet 48)
              (let ((received (now))

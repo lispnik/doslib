@@ -45,7 +45,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.compiled
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.compiled)
 
@@ -154,17 +154,16 @@ instructions store pixels."
   (declare (type (unsigned-byte 32) dest) (type system-area-pointer code) (fixnum count)
            (optimize speed (safety 0)))
   (scattering (at seed count +compiled-x+)
-    (alien-funcall (sap-alien code (function void unsigned-long)) (+ dest at))))
+    (alien-funcall (sap-alien code (function void system-area-pointer)) (int-sap (+ dest at)))))
 
 (defun same-pixels-p (sprite code)
   "Do the blitter and the compiled sprite draw the same thing?  Each draws
 into 16 lines of ordinary memory, over a pattern, and the two are compared."
   (let ((one (make-bytes (* +width+ +size+))) (other (make-bytes (* +width+ +size+))))
     (dotimes (i (length one)) (setf (aref one i) (logand i 255) (aref other i) (logand i 255)))
-    (with-pinned-objects (one other)
-      (blit (vector-sap one) sprite 100 0)
-      (alien-funcall (sap-alien code (function void system-area-pointer))
-                     (sap+ (vector-sap other) 100)))
+    (with-vector-memory (memory one) (blit memory sprite 100 0))
+    (with-vector-memory (memory other)
+      (alien-funcall (sap-alien code (function void system-area-pointer)) (sap+ memory 100)))
     (equalp one other)))
 
 (defun text (control &rest arguments)

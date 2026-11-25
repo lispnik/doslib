@@ -28,7 +28,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-emacs
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:buf #:buf-name #:buf-lines #:buf-line #:buf-col #:buf-goal
           #:buf-mark #:buf-mark-active #:buf-file #:buf-modified #:buf-mode
           #:buf-undo #:buf-redo #:buf-crlf #:buf-prompt #:buf-history
@@ -104,7 +104,7 @@
           #:parent-directory #:directory-name-p #:read-directory
           #:dired-sorted #:dired-line #:dired-render #:dired-read
           #:dired-buffer #:dired-entry #:dired-path #:dired-real-entry
-          #:dired-attributes #:dired-change-directory #:check-unix
+          #:dired-attributes #:dired-change-directory #:check-done
           #:dired-target #:file-name-of #:dired #:dired-next-line
           #:dired-previous-line #:dired-find-file
           #:dired-find-file-other-window #:dired-up-directory #:dired-refresh
@@ -132,4 +132,4 @@
 ;;; functions by accident.
 (defpackage #:doslib-emacs-user
   (:nicknames #:emacs-user)
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib #:doslib-emacs))
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib #:doslib-emacs))

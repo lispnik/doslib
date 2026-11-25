@@ -56,20 +56,22 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.tiles
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.tiles)
 
-(defconstant +row-bytes+ 88)            ; addresses from one row to the next: 352 pixels
-(defconstant +room+ 22)                 ; columns of tiles in a row of memory
-(defconstant +view-rows+ 224)           ; pixel rows of the window: the rest is the status bar
-(defconstant +kept-rows+ 16)            ; rows of tiles kept drawn: 15 can be in view
-(defconstant +map-width+ 128)           ; tiles across the world
-(defconstant +map-height+ 40)           ; and down
-(defconstant +base+ (* 16 +row-bytes+)) ; the world starts after the status bar's 16 rows
-(defconstant +limit-x+ (- (* 16 +map-width+) 320))             ; the furthest it can scroll
-(defconstant +limit-y+ (- (* 16 +map-height+) +view-rows+))
-(defconstant +redraw+ (* 21 15))        ; tiles wholly or partly in view, at most
+(eval-when (:compile-toplevel :load-toplevel :execute)   ; known when compiling, for #.
+  (defconstant +row-bytes+ 88)            ; addresses from one row to the next: 352 pixels
+  (defconstant +room+ 22)                 ; columns of tiles in a row of memory
+  (defconstant +view-rows+ 224)           ; pixel rows of the window: the rest is the status bar
+  (defconstant +kept-rows+ 16)            ; rows of tiles kept drawn: 15 can be in view
+  (defconstant +map-width+ 128)           ; tiles across the world
+  (defconstant +map-height+ 40)           ; and down
+  (defconstant +base+ (* 16 +row-bytes+)) ; the world starts after the status bar's 16 rows
+  (defconstant +limit-x+ (- (* 16 +map-width+) 320))             ; the furthest it can scroll
+  (defconstant +limit-y+ (- (* 16 +map-height+) +view-rows+))
+  (defconstant +redraw+ (* 21 15))        ; tiles wholly or partly in view, at most
+  )
 
 ;;; ---- the mode
 ;;; (MODE-X, 320x240 in four planes, is the library's, with the writers of the VGA's
@@ -95,12 +97,14 @@
     (vga-attribute #x13 (* 2 (logand x 3)))))   ; and the panning, used at once, during it
 
 ;;; ---- the tiles: 16 by 16, kept a plane at a time as video memory wants them
-(defconstant +sky+ 0) (defconstant +cloud-left+ 1) (defconstant +cloud+ 2)
-(defconstant +cloud-right+ 3) (defconstant +grass+ 4) (defconstant +earth+ 5)
-(defconstant +rock+ 6) (defconstant +bedrock+ 7) (defconstant +brick+ 8)
-(defconstant +cave+ 9) (defconstant +gem+ 10) (defconstant +flower+ 11)
-(defconstant +trunk+ 12) (defconstant +leaves+ 13) (defconstant +window+ 14)
-(defconstant +ladder+ 15) (defconstant +tiles+ 16)
+(eval-when (:compile-toplevel :load-toplevel :execute)   ; known when compiling, for #.
+  (defconstant +sky+ 0) (defconstant +cloud-left+ 1) (defconstant +cloud+ 2)
+  (defconstant +cloud-right+ 3) (defconstant +grass+ 4) (defconstant +earth+ 5)
+  (defconstant +rock+ 6) (defconstant +bedrock+ 7) (defconstant +brick+ 8)
+  (defconstant +cave+ 9) (defconstant +gem+ 10) (defconstant +flower+ 11)
+  (defconstant +trunk+ 12) (defconstant +leaves+ 13) (defconstant +window+ 14)
+  (defconstant +ladder+ 15) (defconstant +tiles+ 16)
+  )
 
 (defun set-colours ()
   (loop for (red green blue) in '((0 0 0) (24 40 62) (62 62 63) (48 52 60)      ; sky, cloud

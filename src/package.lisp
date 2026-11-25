@@ -3,7 +3,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib
-  (:use #:cl #:sb-alien #:sb-sys)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-sys #:doslib-compat)
   (:documentation "BIOS, DOS, port and memory access for SBCL on DOS.
 Everything is done from Lisp: the few instructions Lisp cannot express (INT,
 IN, OUT, CPUID) are assembled by hand into malloc'ed memory and called with

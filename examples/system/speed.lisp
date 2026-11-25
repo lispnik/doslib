@@ -32,11 +32,11 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.speed
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.speed)
 
-(declaim (sb-ext:muffle-conditions sb-ext:compiler-note))
+#+sbcl (declaim (sb-ext:muffle-conditions sb-ext:compiler-note))
 
 (defconstant +size+ (* 1024 1024))              ; what is copied each time
 (defconstant +screen+ 64000)                    ; a mode 13h screenful
@@ -185,7 +185,7 @@ bytes a second, and processor cycles to the byte (NIL without COUNTER)."
            (try "Lisp, 32 bits at a time" +size+ (lambda () (copy-words to-sap from-sap +size+)))
            (try "REPLACE on Lisp vectors" +size+ (lambda () (copy-vector to-vector from-vector)))
            (try "C library's memmove" +size+
-                (lambda () (sb-kernel:system-area-ub8-copy from-sap 0 to-sap 0 +size+)))
+                (lambda () (copy-memory from-sap 0 to-sap 0 +size+)))
            (try "REP MOVSB" +size+ (lambda () (string-copy *movsb* to-sap from-sap +size+)))
            (try "REP MOVSD" +size+
                 (lambda () (string-copy *movsd* to-sap from-sap (floor +size+ 4))))

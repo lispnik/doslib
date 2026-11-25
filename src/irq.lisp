@@ -101,7 +101,7 @@ through.  Returns a hook, for IRQ-COUNT and REMOVE-IRQ-HANDLER."
                            (%make-irq-hook
                             :irq irq :memory memory :chain chain
                             :code (apply #'machine-code
-                                         (irq-handler-bytes irq (sap-int memory)
+                                         (irq-handler-bytes irq (near-address (sap-int memory))
                                                             :read-ports read-ports
                                                             :write-ports write-ports
                                                             :buffer buffer
@@ -116,7 +116,7 @@ through.  Returns a hook, for IRQ-COUNT and REMOVE-IRQ-HANDLER."
             (sap-ref-32 memory 0) 0 (sap-ref-16 memory 4) 0
             (sap-ref-8 memory 12) 0 (irq-hook-tail hook) 0
             (sap-ref-32 memory 6) offset (sap-ref-16 memory 10) selector))
-    (set-vector (irq-vector irq) (code-selector) (sap-int (irq-hook-code hook)))
+    (set-vector (irq-vector irq) (code-selector) (near-address (sap-int (irq-hook-code hook))))
     (when unmask (outb port (logandc2 (inb port) bit)))
     (setf (irq-hook-installed hook) t)
     hook))

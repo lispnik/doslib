@@ -53,7 +53,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.timer
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main #:call-with-fast-timer #:milliseconds))
 (in-package #:doslib-examples.timer)
 
@@ -71,7 +71,7 @@
 
 (defun handler-code ()
   "The handler for interrupt 8: count, and now and then pass it on."
-  (let ((ds (data-selector)) (at (sap-int *memory*)))
+  (let ((ds (data-selector)) (at (near-address (sap-int *memory*))))
     (flet ((address (offset) (loop for i below 4 collect (ldb (byte 8 (* 8 i)) (+ at offset)))))
       (apply #'machine-code
              `(#x50 #x1E                            ; push eax / push ds
@@ -102,7 +102,7 @@ MILLISECONDS counting them; put the timer back afterwards."
           (sap-ref-32 *memory* 6) old-offset
           (sap-ref-16 *memory* 10) old-selector)
     (unwind-protect
-         (progn (set-vector 8 (code-selector) (sap-int (handler-code)))
+         (progn (set-vector 8 (code-selector) (near-address (sap-int (handler-code))))
                 (set-divisor +divisor+)
                 (funcall function))
       (set-divisor 0)

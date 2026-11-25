@@ -78,9 +78,7 @@ back as it, between |bars| if not."
    (multiple-value-bind (symbol found) (find-named-symbol name)
      (when (and found (fboundp symbol) (not (special-operator-p symbol)))
        (let* ((function (or (macro-function symbol) (fdefinition symbol)))
-              (arguments (if (typep function 'generic-function)
-                             (sb-mop:generic-function-lambda-list function)
-                             (sb-kernel:%fun-lambda-list function)))
+              (arguments (function-arguments function))
               (*package* (current-package)) (*print-case* :downcase) (*print-pretty* nil))
          (and (listp arguments) (format nil "(~(~A~)~{ ~S~})" name arguments)))))))
 
@@ -189,7 +187,7 @@ foo, package:foo (exported ones) or package::foo."
          (text (string-trim " " (read-string "Apropos: "))))
     (when (string= text "") (editor-error "Apropos of what?"))
     (let* ((symbols (remove-duplicates (append (apropos-list text package)
-                                               (apropos-list text nil t))))
+                                               (external-apropos text))))
            (rows (loop for symbol in symbols
                        for kinds = (ignore-errors (symbol-kinds symbol))
                        when kinds
@@ -346,7 +344,7 @@ prints -- or stop tracing it."
   "Show the machine code of a function in the buffer *disassembly*."
   (let ((symbol (read-function-name "Disassemble: ")))
     (show-in-help "*disassembly*"
-                  (with-output-to-string (out) (disassemble symbol :stream out)))))
+                  (disassembly-string symbol))))
 (define-command undefine-function ()
   "Make a function or a macro undefined."
   (let ((symbol (read-function-name "Undefine: ")))

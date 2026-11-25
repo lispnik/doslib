@@ -6,11 +6,11 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.special
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.special)
 
-(declaim (sb-ext:muffle-conditions sb-ext:compiler-note))
+#+sbcl (declaim (sb-ext:muffle-conditions sb-ext:compiler-note))
 (defvar *formula* '(+ (* 3 (sin (* x 0.5))) (* 2 (cos (* y 0.25))) (/ (* x y) 100.0)))
 (defun interpret (form x y)             ; a tree-walking evaluator
   (cond ((eq form 'x) x) ((eq form 'y) y) ((numberp form) form)
@@ -38,7 +38,7 @@
         (format t "compiled:     sum ~12,3F  in ~8,1F ms   (~,1Fx faster)~%"
                 sum2 ms2 (/ ms1 (max ms2 0.001)))))
     (format t "The specialised function is ~D bytes of x86 made a moment ago:~%"
-            (sb-kernel:%code-text-size (sb-kernel:fun-code-header compiled)))
+            (code-bytes compiled))
     (let ((*print-right-margin* 78))
       (disassemble (compile nil '(lambda (x) (declare (type (unsigned-byte 12) x)
                                                     (optimize speed (safety 0)))

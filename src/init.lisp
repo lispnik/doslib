@@ -42,9 +42,9 @@ with its own :TOPLEVEL function calls it first."
   (clrhash *hotkey-functions*)
   t)
 (doslib-init)
-(pushnew 'doslib-init sb-ext:*init-hooks*)
-(pushnew 'remove-irq-handlers sb-ext:*exit-hooks*)
-(pushnew 'key-state-stop sb-ext:*exit-hooks*)
-(pushnew 'remove-hotkeys sb-ext:*exit-hooks*)   ; leave the keyboard as we found it
+(add-init-hook 'doslib-init)
+(add-exit-hook 'remove-irq-handlers)
+(add-exit-hook 'key-state-stop)
+(add-exit-hook 'remove-hotkeys)   ; leave the keyboard as we found it
 (defun release-all-critical-errors () (release-critical-errors t))
-(pushnew 'release-all-critical-errors sb-ext:*exit-hooks*)
+(add-exit-hook 'release-all-critical-errors)
