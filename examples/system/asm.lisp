@@ -5,7 +5,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.asm
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.asm)
 
@@ -69,8 +69,11 @@
   next (add eax edx) (xchg eax edx) (dec ecx) (jnz next)
   (ret))
 (defasm multiply (a b) (mov eax (esp 4)) (imul eax (esp 8)) (ret))
-(defasm video-mode-now ()               ; BIOS data area byte 0449h, the hard way
-  (mov edx #x449) (xor eax eax) (mov eax (edx 0)) (ret))
+;;; (The address is an argument, not a number in the code: the address the
+;;; program knows 0449h by is not 0449h in every Lisp.  See NEAR-ADDRESS.)
+(defasm read-word (address)             ; BIOS data area byte 0449h, the hard way
+  (mov edx (esp 4)) (xor eax eax) (mov eax (edx 0)) (ret))
+(defun video-mode-now () (read-word (near-address #x449)))
 (defasm dos-version ()                  ; INT 21h, AH=30h
   (push ebx) (mov eax #x3000) (int #x21) (pop ebx) (ret))
 

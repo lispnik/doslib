@@ -80,7 +80,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.modplay
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main #:write-song #:built-in-song #:parse-mod #:read-mod #:find-mod
            #:describe-mod))
 (in-package #:doslib-examples.modplay)
@@ -837,7 +837,7 @@ there is no card that can."
                  (blaster-write (lo (1- +block+))) (blaster-write (hi (1- +block+)))
                  (blaster-write #x1C)                               ; go: 8 bits, auto-initialize
                  (setf began (ticks) tick began
-                       allocated (get-bytes-consed))
+                       allocated (bytes-allocated))
                  ;; An interrupt means a block has been played and is free for
                  ;; new samples.  Which block?  They are played 0, 1, 0, 1 ...,
                  ;; but rather than count on never missing an interrupt, ask
@@ -861,7 +861,7 @@ there is no card that can."
                      (when (/= now tick)
                        (setf tick now)
                        (when (key-pressed-p) (wait-key) (return)))))
-                 (setf allocated (- (get-bytes-consed) allocated)))
+                 (setf allocated (- (bytes-allocated) allocated)))
             ;; pause, end, speaker off
             (blaster-write #xD0) (blaster-write #xDA) (blaster-write #xD3)
             (dma-stop *blaster-dma*)

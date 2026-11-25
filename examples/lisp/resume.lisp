@@ -13,7 +13,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.resume
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.resume)
 
@@ -45,7 +45,7 @@
   (video-mode 3)
   (format t "~&Stopping at row ~D of ~D.  Writing the whole program to RESUME.EXE...~%" *row* +rows+)
   (finish-output)
-  (save-lisp-and-die "resume.exe" :executable t :toplevel #'resume))
+  (save-program #+sbcl "resume.exe" #+clisp "resume.mem" #'resume))
 
 (defun render ()
   "Draw from *ROW* on.  Returns :DONE or :ABANDONED -- or does not return, if it is saved."
@@ -75,7 +75,7 @@
 
 (defun resume ()                        ; where RESUME.EXE starts
   (finish-up (render))
-  (exit))
+  (exit-lisp))
 
 (defun main ()
   "Stop a computation in the middle; carry on later from RESUME.EXE."

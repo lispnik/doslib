@@ -184,16 +184,16 @@ position is inside a string."
 ;;; stream is *QUERY-IO* and *STANDARD-INPUT* during an evaluation.  What is
 ;;; written to it becomes the prompt for what is next read from it, so
 ;;; (y-or-n-p "Really?"), (read) and the questions restarts ask all work.
-(defclass minibuffer-stream (sb-gray:fundamental-character-input-stream
-                             sb-gray:fundamental-character-output-stream)
+(defclass minibuffer-stream (#+sbcl sb-gray:fundamental-character-input-stream #+clisp gray:fundamental-character-input-stream
+                             #+sbcl sb-gray:fundamental-character-output-stream #+clisp gray:fundamental-character-output-stream)
   ((prompt :initform "" :accessor stream-prompt)
    (pending :initform "" :accessor stream-pending)
    (index :initform 0 :accessor stream-index)))
-(defmethod sb-gray:stream-write-char ((stream minibuffer-stream) char)
+(defmethod #+sbcl sb-gray:stream-write-char #+clisp gray:stream-write-char ((stream minibuffer-stream) char)
   (setf (stream-prompt stream) (concatenate 'string (stream-prompt stream) (string char)))
   char)
-(defmethod sb-gray:stream-line-column ((stream minibuffer-stream)) nil)
-(defmethod sb-gray:stream-read-char ((stream minibuffer-stream))
+(defmethod #+sbcl sb-gray:stream-line-column #+clisp gray:stream-line-column ((stream minibuffer-stream)) nil)
+(defmethod #+sbcl sb-gray:stream-read-char #+clisp gray:stream-read-char ((stream minibuffer-stream))
   (when (>= (stream-index stream) (length (stream-pending stream)))
     (let* ((asked (string-trim '(#\Space #\Newline) (stream-prompt stream)))
            (prompt (subseq asked (1+ (or (position #\Newline asked :from-end t) -1)))))
@@ -204,11 +204,11 @@ position is inside a string."
             (stream-index stream) 0 (stream-prompt stream) "")))
   (prog1 (char (stream-pending stream) (stream-index stream))
     (incf (stream-index stream))))
-(defmethod sb-gray:stream-unread-char ((stream minibuffer-stream) char)
+(defmethod #+sbcl sb-gray:stream-unread-char #+clisp gray:stream-unread-char ((stream minibuffer-stream) char)
   (declare (ignore char))
   (when (plusp (stream-index stream)) (decf (stream-index stream)))
   nil)
-(defmethod sb-gray:stream-clear-input ((stream minibuffer-stream))
+(defmethod #+sbcl sb-gray:stream-clear-input #+clisp gray:stream-clear-input ((stream minibuffer-stream))
   (setf (stream-pending stream) "" (stream-index stream) 0)
   nil)
 (defvar *minibuffer-stream* (make-instance 'minibuffer-stream))
@@ -237,8 +237,7 @@ Type a restart's number to invoke it, or q to abandon the evaluation.~%~%Backtra
              (loop for restart in restarts for i from 0
                    collect (format nil " ~2D: [~A] ~A" i (restart-name restart) restart))
              (or (ignore-errors
-                  (with-output-to-string (out)
-                    (sb-debug:print-backtrace :stream out :count 40)))
+                  (backtrace-string 40))
                  "(not available)")))
     (unwind-protect
          (loop
@@ -264,7 +263,7 @@ condition if the evaluation was abandoned.  Errors enter the debugger."
   (let ((out (make-string-output-stream)) (values '()) (condition nil) (*debugged* nil))
     (let ((*standard-output* out) (*error-output* out) (*trace-output* out)
           (*query-io* *minibuffer-stream*) (*standard-input* *minibuffer-stream*)
-          (sb-ext:*invoke-debugger-hook* #'editor-debugger)    ; BREAK and the like
+          (#+sbcl sb-ext:*invoke-debugger-hook* #+clisp *debugger-hook* #'editor-debugger)    ; BREAK and the like
           (*package* *repl-package*))
       (restart-case
           (let ((*editor-restart* (find-restart 'abort)))
@@ -432,9 +431,7 @@ compiler recorded one and it is still there."
           (symbol (and package (find-symbol (string-upcase (bare-name name)) package)))
           (function (and symbol (or (macro-function symbol)
                                     (and (fboundp symbol) (fdefinition symbol)))))
-          (code (and function (sb-kernel:fun-code-header (sb-kernel:%fun-fun function))))
-          (file (and code (sb-c::debug-source-namestring
-                           (sb-c::debug-info-source (sb-kernel:%code-debug-info code))))))
+          (file (and function (function-source-file symbol function))))
      (and file (probe-file file) (namestring file)))))
 (defun find-definition-place (name)
   "Where NAME is defined: a buffer and a line number, or NIL."

@@ -53,7 +53,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.textfont
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.textfont)
 
@@ -122,7 +122,7 @@ how many, DX the first character's code, BH the bytes in each and BL the font (0
           (sap-ref-32 *rm* #x14) first                  ; EDX
           (sap-ref-32 *rm* #x08) 0                      ; EBP
           (sap-ref-16 *rm* #x22) segment)               ; ES
-    (int86 #x31 :ax #x0300 :bx #x10 :di (sap-int *rm*)))     ; DPMI: do real-mode INT 10h
+    (int86 #x31 :ax #x0300 :bx #x10 :di (near-address (sap-int *rm*))))     ; DPMI: do real-mode INT 10h
   (incf *written* (length bytes)))
 
 ;;; ---- the glyphs

@@ -21,7 +21,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.vop
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main #:fill-words #:swap-bytes #:port-byte))
 (in-package #:doslib-examples.vop)
 
@@ -36,6 +36,7 @@
 ;;;   :from and :to        say for how long, so that an argument can be put
 ;;;                        in that very register and the MOVE costs nothing
 ;;;   :generator           is the code: INST assembles one instruction
+#+sbcl
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (sb-c:defknown fill-words (system-area-pointer (unsigned-byte 32) (unsigned-byte 32)) (values)
       () :overwrite-fndb-silently t)
@@ -180,6 +181,9 @@
 
 (defun main ()
   "Machine instructions in line: three operations added to the compiler, and timed."
+  #+clisp
+  (progn (format t "~&vop needs SBCL: it adds instructions to SBCL's compiler, and CLISP's makes byte code.~%")
+         (return-from main (values)))
   (let ((memory (alien-sap (make-alien (unsigned 32) +words+)))
         (swaps 200000) (reads 20000))
     (format t "~&Three instructions Lisp has no function for, used three ways.~%")
@@ -202,7 +206,7 @@
     (format t "~&~%(swap-bytes #x11223344) is #x~8,'0X.  This is all of SWAP-BYTES, as the~%~
                compiler made it: the BSWAP is in the function, not called from it.~%"
             (swap-bytes #x11223344))
-    (let ((listing (with-output-to-string (out) (disassemble 'swap-bytes :stream out))))
+    (let ((listing (disassembly-string 'swap-bytes)))
       (with-input-from-string (in listing)
         (loop for line = (read-line in nil)
               while line

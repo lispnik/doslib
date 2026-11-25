@@ -8,6 +8,46 @@ nothing else, the `sb-bsd-sockets` contrib and a packet driver. The port is
 the `dos-port` branch of <https://github.com/lispnik/sbcl>;
 [Building SBCL for DOS](#building-sbcl-for-dos) below says how to make it.
 
+## On CLISP
+
+All four systems also load on the DOS port of CLISP built with DJGPP,
+which has the functions `sys::dos-peek`, `dos-poke`, `dos-malloc`,
+`dos-call`, `dos-near`, `dos-put`, `dos-get` and `dos-resolve`.
+`src/compat.lisp` (the package `doslib-compat`) defines the SBCL names
+the code is written with (`sap-ref-8`, `int-sap`, `make-alien`,
+`alien-funcall`) on top of them, and the few things each Lisp does its
+own way: the heap's size, saving a program, directories and files.
+`examples/sockets.lisp` (the package `doslib-sockets`) is
+`sb-bsd-sockets` on SBCL and as much of it as the examples use, made
+from CLISP's `SOCKET` package, on CLISP.
+
+Three things are different there, and the code is written so that it is
+right on both:
+
+- **Addresses.** An address is a linear address everywhere, as on SBCL:
+  B8000h is the text screen. A DJGPP program's own addresses are
+  different, so an address that machine code or a DPMI call uses
+  relative to a segment register goes through `near-address` (which
+  does nothing on SBCL); `alien-funcall` does that itself for arguments
+  declared `system-area-pointer`. Machine code takes the addresses it
+  uses as arguments, not as numbers in the code.
+- **Vectors move.** There is no `vector-sap`. `copy-vector-to-memory`
+  and `copy-memory-to-vector` copy bytes between a Lisp vector and
+  memory, and `with-vector-memory` gives code that works on memory a
+  copy of a vector for a while.
+- **No Ctrl-Break.** `interrupts-supported-p` is false: a program that
+  never looks at the keyboard cannot be stopped.
+
+What needs SBCL says so when it is run: `gcviz` (its garbage
+collector's pages), `vop` (its compiler), `faults` (processor faults as
+conditions), `step` (the runtime's single-stepping), the first half of
+`intvec` (a Lisp function called from machine code) and `ntp` (CLISP has
+no UDP). `blit` copies its sprites with a loop in Lisp there, and
+`memmap` shows what CLISP has. `build-executable`, `build-emacs` and
+`resume` save a memory image rather than an .EXE, started with
+`LISP.EXE -M file`. `(ed "file")` does not open the editor. CLISP runs
+byte code, so what draws a pixel at a time is much slower.
+
 ## Systems
 
 `doslib.asd` defines four ASDF systems.

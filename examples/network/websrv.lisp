@@ -9,7 +9,8 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.websrv
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib #:sb-bsd-sockets)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib
+        #:doslib-sockets)
   (:export #:main))
 (in-package #:doslib-examples.websrv)
 
@@ -44,13 +45,13 @@
             ("Processor" ,(machine-type))
             ("You are" ,(format nil "~A port ~D" (ip-string (socket-peername socket))
                                 (nth-value 1 (socket-peername socket))))
-            ("Heap in use" ,(format nil "~:D bytes" (sb-kernel:dynamic-usage)))
+            ("Heap in use" ,(format nil "~:D bytes" (heap-bytes-used)))
             ("Up" ,(format nil "~D seconds" (- (get-universal-time) *started*)))
             ("Requests served" ,*requests*)
             ("Time here" ,(clock)))))
 (defun files-page ()
   (with-output-to-string (out)
-    (format out "~A~%" (sb-unix:posix-getcwd))
+    (format out "~A~%" (string-right-trim "\\" (current-directory-string)))
     (dolist (path (directory "*.*"))
       (format out "~10@A  ~A~%"
               (or (ignore-errors (with-open-file (in path :element-type '(unsigned-byte 8))

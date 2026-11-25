@@ -15,7 +15,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.restarts
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.restarts)
 
@@ -33,9 +33,8 @@ try again or to use another file."
     (restart-case
         (progn
           (critical-error)              ; forget any old one
-          (let ((fd (sb-unix:unix-open path sb-unix:o_rdonly 0)))
-            (when fd
-              (return (make-fd-stream fd :input t :buffering :full :external-format :latin-1)))
+          (let ((stream (open-latin-1-file path)))
+            (when stream (return stream))
             (let ((reason (critical-error)))
               (if reason
                   (error 'device-not-ready :pathname path :reason reason)

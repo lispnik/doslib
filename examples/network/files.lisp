@@ -16,7 +16,8 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.files
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib #:sb-bsd-sockets)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib
+        #:doslib-sockets)
   (:export #:main))
 (in-package #:doslib-examples.files)
 
@@ -71,14 +72,12 @@
   (unless (some #'unsafe-part-p parts)
     (format nil "~A~{~A~^\\~}" *root* parts)))
 
-(defun file-kind-and-size (path)
-  (multiple-value-bind (ok dev ino mode nlink uid gid rdev size) (sb-unix:unix-stat (string-right-trim "\\" path))
-    (declare (ignore dev ino nlink uid gid rdev))
-    (cond ((not ok) (if (string= (string-right-trim "\\" path) (string-right-trim "\\" *root*))
-                        (values :directory 0)   ; a drive's root cannot be asked about
-                        nil))
-          ((= (logand mode #o170000) #o040000) (values :directory 0))
-          (t (values :file size)))))
+(defun kind-and-size (path)
+  (let ((path (string-right-trim "\\" path)))
+    (multiple-value-bind (kind size) (doslib-compat:file-kind-and-size path)
+      (cond (kind (values kind size))
+            ((string= path (string-right-trim "\\" *root*))
+             (values :directory 0))))))   ; a drive's root cannot be asked about
 
 (defun content-type (name)
   (let ((type (string-downcase (subseq name (1+ (or (position #\. name :from-end t) (1- (length name))))))))
@@ -104,13 +103,8 @@ Content-Length: ~D~C~CConnection: close~C~C~C~C"
 
 (defun directory-page (path parts)
   (let ((entries '()) (dir (concatenate 'string (string-right-trim "\\" path) "\\")))
-    (sb-impl::map-directory
-     (lambda (entry)
-       (let* ((native (string-right-trim "\\/" (sb-ext:native-namestring entry)))
-              (name (subseq native (1+ (or (position-if (lambda (c) (find c "\\/:")) native :from-end t) -1)))))
-         (multiple-value-bind (kind size) (file-kind-and-size (concatenate 'string dir name))
-           (when kind (push (list name kind size) entries)))))
-     dir)
+    (loop for (name directory size) in (list-directory dir)
+          do (push (list name (if directory :directory :file) size) entries))
     (setf entries (sort entries (lambda (a b)
                                   (if (eq (second a) (second b))
                                       (string-lessp (first a) (first b))
@@ -146,8 +140,7 @@ the client says no more for ten seconds, or hangs up."
         (when (or (<= left 0) (> (length head) 8192) (search '(#\Newline #\Return #\Newline) head)
                   (search '(#\Newline #\Newline) head) (key-pressed-p))
           (return))
-        (when (sb-unix:unix-simple-poll (socket-file-descriptor client) :input
-                                        (min 250 (ceiling (* left 1000) internal-time-units-per-second)))
+        (when (socket-ready-p client (min 250 (ceiling (* left 1000) internal-time-units-per-second)))
           (let ((n (nth-value 1 (socket-receive client buffer nil))))
             (when (or (null n) (<= n 0)) (return))
             (dotimes (i n) (vector-push-extend (code-char (aref buffer i)) head))))))
@@ -178,7 +171,7 @@ the client says no more for ten seconds, or hangs up."
             ((null path)
              (refuse "403 Forbidden" "That is outside what is being served."))
             (t
-             (let ((kind (file-kind-and-size path)))
+             (let ((kind (kind-and-size path)))
                (case kind
                  ((nil) (refuse "404 Not Found" (format nil "There is no ~A here." (html-escape url-path))))
                  (:directory (setf sent (send-text stream status (directory-page path parts))))
@@ -209,7 +202,7 @@ the client says no more for ten seconds, or hangs up."
             *root* port)
     (unwind-protect
          (loop until (key-pressed-p)
-               do (when (sb-unix:unix-simple-poll (socket-file-descriptor listener) :input 0)
+               do (when (socket-ready-p listener 0)
                     ;; Accepting is under the handler too.  There are sockets for 28 clients
                     ;; and the network library keeps each for two minutes after it is closed,
                     ;; so a burst of requests can find none left: that one goes unanswered

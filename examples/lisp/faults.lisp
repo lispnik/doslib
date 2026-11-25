@@ -11,7 +11,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.faults
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.faults)
 
@@ -59,6 +59,11 @@
 
 (defun main ()
   "Processor faults as Lisp conditions: caught, reported, and put right."
+  ;; SBCL's runtime turns a fault into a condition.  CLISP's does not: there
+  ;; a fault in machine code ends the program.
+  #+clisp
+  (progn (format t "~&faults needs SBCL: CLISP does not make conditions of processor faults.~%")
+         (return-from main (values)))
   (format t "~&Machine code that the processor stops, and what Lisp is told:~%")
   (loop for (what code) in *faults*
         do (format t "~&  It ~A:~%" what)

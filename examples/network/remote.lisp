@@ -16,7 +16,8 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.remote
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib #:sb-bsd-sockets)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib
+        #:doslib-sockets)
   (:export #:main))
 (in-package #:doslib-examples.remote)
 
@@ -60,7 +61,7 @@
   (setf *stream* nil *client* nil *pending* "")
   (status-line "listening on port 2323"))
 (defun ready-p (socket)                 ; anything to read or accept, right now?
-  (sb-unix:unix-simple-poll (socket-file-descriptor socket) :input 0))
+  (socket-ready-p socket 0))
 (defun evaluate (text)
   "Evaluate the first form in TEXT for the remote side; returns what is left of TEXT."
   ;; (read here as well as evaluated here: PIXEL and QUIT-DEMO are this package's)

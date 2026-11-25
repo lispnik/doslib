@@ -17,7 +17,8 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.netpong
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib #:sb-bsd-sockets)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib
+        #:doslib-sockets)
   (:export #:main))
 (in-package #:doslib-examples.netpong)
 
@@ -157,7 +158,7 @@ value is true if the other side has gone."
                                             port)
                                 11)
                       (loop until (or ending
-                                      (sb-unix:unix-simple-poll (socket-file-descriptor socket) :input 0))
+                                      (socket-ready-p socket 0))
                             do (when (and (key-pressed-p) (eql (get-key) (code-char 27)))
                                  (setf ending :left)))
                       (unless ending (setf connection (socket-accept socket)))))

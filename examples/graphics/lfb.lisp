@@ -42,14 +42,16 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.lfb
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main #:mode-info))
 (in-package #:doslib-examples.lfb)
 
-(defconstant +mode+ #x101)
-(defconstant +width+ 640)
-(defconstant +height+ 480)
-(defconstant +bytes+ (* +width+ +height+))
+(eval-when (:compile-toplevel :load-toplevel :execute)   ; known when compiling, for #.
+  (defconstant +mode+ #x101)
+  (defconstant +width+ 640)
+  (defconstant +height+ 480)
+  (defconstant +bytes+ (* +width+ +height+))
+  )
 (deftype picture () '(simple-array (unsigned-byte 8) (*)))
 
 ;;; ---- the three steps
@@ -100,29 +102,25 @@ window at A0000h moves it.  NIL if there is no such mode or no framebuffer."
   (dotimes (row 10)
     (fill picture 0 :start (+ x -2 (* +width+ (+ y row -1)))
                     :end (+ x 2 (* 8 (length string)) (* +width+ (+ y row -1)))))
-  (with-pinned-objects (picture)        ; the library's letters, with nothing behind them
-    (draw-glyphs (vector-sap picture) (+ x (* +width+ y)) +width+ string 128 nil)))
+  (with-vector-memory (memory picture)  ; the library's letters, with nothing behind them
+    (draw-glyphs memory (+ x (* +width+ y)) +width+ string 128 nil)))
 
 ;;; ---- to the screen, both ways
 (defun show-linear (picture screen line-bytes)
   "Copy PICTURE to the linear framebuffer at SCREEN."
   (declare (type picture picture) (type system-area-pointer screen) (fixnum line-bytes))
-  (with-pinned-objects (picture)
-    (if (= line-bytes +width+)
-        (sb-kernel:system-area-ub8-copy (vector-sap picture) 0 screen 0 +bytes+)
-        (dotimes (y +height+)           ; a card may keep its lines further apart
-          (sb-kernel:system-area-ub8-copy (vector-sap picture) (* y +width+)
-                                          screen (* y line-bytes) +width+)))))
+  (if (= line-bytes +width+)
+      (copy-vector-to-memory picture 0 screen 0 +bytes+)
+      (dotimes (y +height+)             ; a card may keep its lines further apart
+        (copy-vector-to-memory picture (* y +width+) screen (* y line-bytes) +width+))))
 (defun show-banked (picture step)
   "Copy PICTURE to the screen through the window at A0000h, 64K at a time.
 STEP is how many of the BIOS's units 64K is."
   (declare (type picture picture) (fixnum step))
-  (with-pinned-objects (picture)
-    (loop for bank fixnum from 0
-          for start fixnum from 0 below +bytes+ by 65536
-          do (vesa-set-bank (* bank step))
-             (sb-kernel:system-area-ub8-copy (vector-sap picture) start *vga* 0
-                                             (min 65536 (- +bytes+ start))))))
+  (loop for bank fixnum from 0
+        for start fixnum from 0 below +bytes+ by 65536
+        do (vesa-set-bank (* bank step))
+           (copy-vector-to-memory picture start *vga* 0 (min 65536 (- +bytes+ start)))))
 
 (defun milliseconds-each (function)
   "How long one call of FUNCTION takes, from calling it for half a second."

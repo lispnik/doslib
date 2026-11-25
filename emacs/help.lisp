@@ -57,7 +57,7 @@ after them (\"L [Dired]\")."
               symbol command
               (and (symbol-package symbol) (package-name (symbol-package symbol))))
       (when command (format out "Keys: ~A~%" (keys-phrase symbol)))
-      (let ((arguments (ignore-errors (sb-kernel:%fun-lambda-list (fdefinition symbol)))))
+      (let ((arguments (ignore-errors (function-arguments (fdefinition symbol)))))
         (when arguments (format out "Arguments: ~(~A~)~%" arguments)))
       (format out "~%~A~%" (or (documentation symbol 'function) "Not documented.")))))
 (defun read-command-name (prompt)
@@ -109,7 +109,7 @@ after them (\"L [Dired]\")."
       (do-symbols (symbol package)
         (when (and (eq (symbol-package symbol) package) (boundp symbol)
                    (not (constantp symbol))
-                   (eq (sb-int:info :variable :kind symbol) :special))
+                   (special-variable-p symbol))
           (push symbol found))))
     found))
 (define-command describe-variable ()

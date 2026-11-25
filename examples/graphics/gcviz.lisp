@@ -9,10 +9,12 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.gcviz
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.gcviz)
 
+#+sbcl
+(progn
 (defun runtime-word (name) (sap-ref-32 (int-sap (find-foreign-symbol-address name)) 0))
 (defvar *gcs* 0)
 (defvar *gen-colours* '((63 16 8) (63 44 4) (56 60 8) (16 56 16)      ; 0 red 1 orange 2 yellow 3 green
@@ -64,7 +66,11 @@
                ;; (40 columns in this mode, and writing the last one would scroll)
                (say 0 24 15 (format nil "~5D pages ~3D MB ~5D collections"
                                     pages (floor (sb-kernel:dynamic-usage) 1048576) *gcs*)))))
-  (finish))
+  (finish)))
+
+#+clisp
+(defun gcviz ()
+  (format t "~&gcviz draws the page table of SBCL's garbage collector; CLISP's heap is not made of such pages.~%"))
 
 (defun main ()
   "Watching the garbage collector."

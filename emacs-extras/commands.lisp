@@ -125,7 +125,7 @@
 
 (defun quickload-setup-file ()
   "Quicklisp's setup.lisp, if it is installed: in HOME, where QL.BAT puts it."
-  (dolist (home (list (posix-getenv "HOME") (ignore-errors (namestring (user-homedir-pathname))) "D:/HOME"))
+  (dolist (home (list (environment-variable "HOME") (ignore-errors (namestring (user-homedir-pathname))) "D:/HOME"))
     (when (and home (string/= home ""))
       (let ((file (concatenate 'string (string-right-trim "/\\" home) "/quicklisp/setup.lisp")))
         (when (ignore-errors (probe-file file)) (return file))))))
@@ -171,7 +171,7 @@
 
 ;;; What Quicklisp and the compiler print goes into the buffer as it comes,
 ;;; so that a long load can be watched.
-(defclass quickload-stream (sb-gray:fundamental-character-output-stream)
+(defclass quickload-stream (#+sbcl sb-gray:fundamental-character-output-stream #+clisp gray:fundamental-character-output-stream)
   ((buffer :initarg :buffer :reader quickload-stream-buffer)
    (pending :initform (make-string-output-stream) :reader quickload-stream-pending)
    (column :initform 0 :accessor quickload-stream-column)
@@ -184,14 +184,14 @@
         (unless (= tick (quickload-stream-drawn stream))
           (setf (quickload-stream-drawn stream) tick)
           (ignore-errors (redisplay)))))))
-(defmethod sb-gray:stream-write-char ((stream quickload-stream) char)
+(defmethod #+sbcl sb-gray:stream-write-char #+clisp gray:stream-write-char ((stream quickload-stream) char)
   (write-char char (quickload-stream-pending stream))
   (cond ((char= char #\Newline) (setf (quickload-stream-column stream) 0) (quickload-stream-flush stream))
         (t (incf (quickload-stream-column stream))))
   char)
-(defmethod sb-gray:stream-line-column ((stream quickload-stream)) (quickload-stream-column stream))
-(defmethod sb-gray:stream-force-output ((stream quickload-stream)) (quickload-stream-flush stream) nil)
-(defmethod sb-gray:stream-finish-output ((stream quickload-stream)) (quickload-stream-flush stream) nil)
+(defmethod #+sbcl sb-gray:stream-line-column #+clisp gray:stream-line-column ((stream quickload-stream)) (quickload-stream-column stream))
+(defmethod #+sbcl sb-gray:stream-force-output #+clisp gray:stream-force-output ((stream quickload-stream)) (quickload-stream-flush stream) nil)
+(defmethod #+sbcl sb-gray:stream-finish-output #+clisp gray:stream-finish-output ((stream quickload-stream)) (quickload-stream-flush stream) nil)
 
 (define-command quickload ()
   "Load a system with Quicklisp, downloading it first if need be."

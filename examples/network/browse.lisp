@@ -15,7 +15,8 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.browse
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib #:sb-bsd-sockets)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib
+        #:doslib-sockets)
   (:export #:main))
 (in-package #:doslib-examples.browse)
 
@@ -46,7 +47,7 @@ up at once."
                  (quiet-since (get-internal-real-time)))
              (with-output-to-string (out)
                (loop
-                 (cond ((sb-unix:unix-simple-poll (socket-file-descriptor socket) :input 250)
+                 (cond ((socket-ready-p socket 250)
                         (let ((n (nth-value 1 (socket-receive socket buffer nil))))
                           (when (or (null n) (<= n 0)) (return))
                           (dotimes (i n) (write-char (code-char (aref buffer i)) out))

@@ -16,7 +16,7 @@
         (sap-ref-32 *rm* #x18) cx (sap-ref-32 *rm* #x14) dx
         (sap-ref-32 *rm* 4) si (sap-ref-32 *rm* 0) di
         (sap-ref-16 *rm* #x22) es (sap-ref-16 *rm* #x24) ds)
-  (int86 #x31 :ax #x0300 :bx n :di (sap-int *rm*))
+  (int86 #x31 :ax #x0300 :bx n :di (near-address (sap-int *rm*)))
   (values (sap-ref-16 *rm* #x1C) (sap-ref-16 *rm* #x10) (sap-ref-16 *rm* #x18)
           (sap-ref-16 *rm* #x14) (sap-ref-16 *rm* #x22) (sap-ref-16 *rm* #x24)
           (sap-ref-16 *rm* #x20)))
@@ -32,7 +32,7 @@ return.  Returns AX BX CX DX ES DS FLAGS (16-bit values), as REAL-INT does."
         (sap-ref-32 *rm* 4) si (sap-ref-32 *rm* 0) di
         (sap-ref-16 *rm* #x22) es (sap-ref-16 *rm* #x24) ds
         (sap-ref-16 *rm* #x2A) offset (sap-ref-16 *rm* #x2C) segment)
-  (int86 #x31 :ax #x0301 :bx 0 :cx 0 :di (sap-int *rm*))
+  (int86 #x31 :ax #x0301 :bx 0 :cx 0 :di (near-address (sap-int *rm*)))
   (values (sap-ref-16 *rm* #x1C) (sap-ref-16 *rm* #x10) (sap-ref-16 *rm* #x18)
           (sap-ref-16 *rm* #x14) (sap-ref-16 *rm* #x22) (sap-ref-16 *rm* #x24)
           (sap-ref-16 *rm* #x20)))
@@ -113,9 +113,9 @@ names.  Returns the segment and the offset: DS:DX for REAL-INT, say."
 ;;; it, which is when the program next calls DOS.)
 (deftype interrupt ()
   "The condition signalled when the user interrupts the program."
-  'sb-sys:interactive-interrupt)
+  'interrupt-condition)
 (defun break-variable (name)
-  (let ((address (sb-sys:find-foreign-symbol-address name)))
+  (let ((address (foreign-variable-address name)))
     (and address (int-sap address))))
 (defun interrupts-supported-p ()
   "Can this SBCL be interrupted with Ctrl-Break?  (One built before that was added cannot.)"
@@ -138,4 +138,4 @@ it to NIL for a program that wants those keys itself."
   "Run BODY and return its values -- or, if the user interrupts it, stop it
 there (its UNWIND-PROTECT forms run) and return :INTERRUPTED."
   `(handler-case (progn ,@body)
-     (sb-sys:interactive-interrupt () :interrupted)))
+     (interrupt-condition () :interrupted)))

@@ -14,7 +14,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.asmdsl
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.asmdsl)
 
@@ -97,16 +97,20 @@
                       ,@arguments))))
 
 ;;; ---- the routine: every pixel = (column XOR row) + time, for all 64,000
-(define-machine-function paint-fast (time)
+;;; (Video memory is an argument, not A0000h in the code: the address the
+;;; program knows it by is not A0000h in every Lisp.  See NEAR-ADDRESS.)
+(define-machine-function paint-at (time video)
   (saving (ebx esi edi)
     (cld)
-    (mov esi (esp 16))                  ; the argument, past the three saved registers
-    (mov edi #xA0000)                   ; video memory
+    (mov esi (esp 16))                  ; the arguments, past the three saved registers
+    (mov edi (esp 20))                  ; video memory
     (repeat edx 200
       (repeat ecx 320
         (mov eax ecx) (xor eax edx) (add eax esi)
         (stosb))))
   (ret))
+
+(defun paint-fast (time) (paint-at time (near-address #xA0000)))
 
 ;;; ---- and in Lisp, declared and optimized
 (defun paint-lisp (time)
@@ -126,7 +130,7 @@
 
 (defun main ()
   "Assembly language with Lisp macros, timed against Lisp."
-  (let ((source (get 'paint-fast 'source)))
+  (let ((source (get 'paint-at 'source)))
     (format t "~&The routine, as written:~%~{  ~S~%~}" source)
     (format t "~%What the macros turn it into (~D items):~%  ~{~S~^ ~}~%"
             (length (expand source)) (expand source))

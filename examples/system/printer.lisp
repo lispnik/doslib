@@ -25,7 +25,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.printer
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.printer)
 
@@ -85,13 +85,11 @@
 critical error to DOS; here it is signalled as PRINTER-NOT-READY."
   (let* ((name (device-name printer))
          (bytes (report-bytes lines t))
-         (fd (sb-unix:unix-open name sb-unix:o_wronly 0)))
-    (unless fd
+         (written (progn (critical-error)       ; forget any old one
+                         (write-bytes-to-device name bytes))))
+    (unless written
       (error 'printer-not-ready :device name :reason "DOS has no such device"))
-    (critical-error)                    ; forget any old one
-    (let* ((written (unwind-protect (sb-unix:unix-write fd bytes 0 (length bytes))
-                      (sb-unix:unix-close fd)))
-           (reason (critical-error)))
+    (let ((reason (critical-error)))
       (cond (reason (error 'printer-not-ready :device name :reason reason))
             ((not (eql written (length bytes)))
              (error 'printer-not-ready :device name
@@ -154,7 +152,7 @@ try again or to print to a file."
             (format nil "Lisp:   ~A ~A" (lisp-implementation-type) (lisp-implementation-version))
             (format nil "Memory: ~D KB of conventional memory, by the BIOS's count."
                     (word16 (int86 #x12)))
-            (format nil "Heap:   ~:D bytes of Lisp objects." (sb-kernel:dynamic-usage))
+            (format nil "Heap:   ~:D bytes of Lisp objects." (heap-bytes-used))
             ""
             "A printer that is not ready is not the end of the program:"
             "the code that prints offers RETRY, PRINT-TO-FILE and SKIP,"

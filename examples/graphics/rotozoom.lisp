@@ -43,7 +43,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.rotozoom
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.rotozoom)
 
@@ -156,15 +156,15 @@ top 8 bits of 32."
         (status (status-line 0 0)) (vga *vga*))
     (with-video-mode (#x13)
       (texture-palette)
-      (with-pinned-objects (buffer)     ; it must stay where it is while its address is in use
+      (progn
         (loop
           (when (and (key-pressed-p) (eql (get-key) #\Escape)) (return))
           (let ((start (timer-count)))
             (multiple-value-call #'draw-frame buffer texture (frame-steps sines frame))
             (incf drawing (max 0 (- (timer-count) start))))
-          (draw-glyphs (vector-sap buffer) 0 +width+ status +white+ +black+)
+          (with-vector-memory (memory buffer) (draw-glyphs memory 0 +width+ status +white+ +black+))
           (wait-frame)
-          (sb-kernel:system-area-ub8-copy (vector-sap buffer) 0 vga 0 +screen-bytes+)
+          (copy-vector-to-memory buffer 0 vga 0 +screen-bytes+)
           (incf frame) (incf frames)
           (let ((elapsed (- (timer-count) since)))
             (when (or (>= elapsed +timer-hz+) (< elapsed 0))         ; a second (or midnight)

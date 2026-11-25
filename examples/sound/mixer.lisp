@@ -79,7 +79,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.mixer
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main #:self-test
            #:make-sound #:make-mixer #:play-sample #:stop-voice #:mix-block
            #:with-mixer #:mixer-start #:mixer-stop #:mixer-service))
@@ -495,9 +495,9 @@ together) when the voices in SETTINGS -- lists of sound, rate, volume, pan
     (setf (mx-tables mixer) tables)
     (loop for (sound voice-rate volume pan) in settings
           do (play-sample mixer sound :rate voice-rate :volume volume :pan pan))
-    (with-pinned-objects (bytes)
+    (with-vector-memory (memory bytes)
       (dotimes (b blocks)
-        (mix-block mixer (sap+ (vector-sap bytes) (* b per-block)) frames)))
+        (mix-block mixer (sap+ memory (* b per-block)) frames)))
     bytes))
 
 (defun constant-sound (value length)
@@ -553,9 +553,9 @@ the bytes compared and the number that differ; prints them if REPORT."
     (setf (mx-tables mixer) tables)
     (dotimes (i 8)
       (play-sample mixer organ :rate (* 3000 (+ 3 i)) :volume 40 :pan (* 9 i)))
-    (with-pinned-objects (bytes)
+    (with-vector-memory (memory bytes)
       (let ((before (timer-count)))
-        (dotimes (i 16) (mix-block mixer (vector-sap bytes) 512))
+        (dotimes (i 16) (mix-block mixer memory 512))
         (microseconds (floor (- (timer-count) before) 16))))))
 
 ;;; ---- the tune that plays by itself: sixteenths at 120 beats a minute, two bars
@@ -736,7 +736,7 @@ the bytes compared and the number that differ; prints them if REPORT."
                                           checked wrong)
                              (if (zerop wrong) 10 12))
                  (setf began (ticks) last-tick began
-                       allocated (get-bytes-consed))
+                       allocated (bytes-allocated))
                  (loop
                    (when (mixer-service mixer)
                      (let ((place (dma-address *blaster-dma*)))
@@ -773,7 +773,7 @@ the bytes compared and the number that differ; prints them if REPORT."
                              ((#\d #\D) (wait-tick 2))
                              (#\Escape (return))))))))
                  (setf seconds (/ (- (ticks) began) 18.2065)
-                       allocated (- (get-bytes-consed) allocated)))
+                       allocated (- (bytes-allocated) allocated)))
             (text-fill 0 0 80 25 7) (text-cursor 0 0) (show-text-cursor))))
       (let* ((blocks (max 1 (mx-blocks mixer)))
              (average (microseconds (floor (mx-total-clocks mixer) blocks)))

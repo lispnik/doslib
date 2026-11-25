@@ -23,7 +23,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.speaker
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:shadow #:beep)                      ; SB-SYS has one of its own
   (:import-from #:doslib-examples.adlib
                 #:parse-score #:note-frequency #:+pit-hz+ #:beat-counts

@@ -38,7 +38,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.dirty
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.dirty)
 
@@ -188,7 +188,7 @@ move them, and draw them where they are."
 (defun repaint (background buffer sprite flock count)
   "The back buffer made again from nothing, with the keys on its last line."
   (declare (type system-area-pointer background buffer))
-  (sb-kernel:system-area-ub8-copy background 0 buffer 0 +screen-bytes+)
+  (copy-memory background 0 buffer 0 +screen-bytes+)
   (dotimes (i count)
     (blit buffer sprite (aref (flock-x flock) i) (aref (flock-y flock) i)))
   (draw-glyphs buffer (* +width+ +bottom+) +width+
@@ -202,8 +202,9 @@ move them, and draw them where they are."
     (with-video-mode (#x13)
       (background-palette)
       ;; the vectors must stay where they are while their addresses are in use
-      (with-pinned-objects (background buffer)
-        (let ((background (vector-sap background)) (buffer (vector-sap buffer)) (screen *vga*))
+      (with-vector-memory (background background :write-back nil)
+        (with-vector-memory (buffer buffer :write-back nil)
+         (let ((screen *vga*))
           (loop
             (when (key-pressed-p)
               (case (get-key)
@@ -228,7 +229,7 @@ move them, and draw them where they are."
                            (if (< bytes-a-frame +screen-bytes+) 10 12)))
             (wait-frame t)
             (cond ((or repaint (not dirty))
-                   (sb-kernel:system-area-ub8-copy buffer 0 screen 0 +screen-bytes+)
+                   (copy-memory buffer 0 screen 0 +screen-bytes+)
                    (incf bytes +screen-bytes+))
                   (t (incf bytes (show-dirty buffer screen flock count))
                      (when new-text     ; they are a dirty rectangle too
@@ -242,7 +243,7 @@ move them, and draw them where they are."
                   (setf frames-a-second (round (* frames +timer-hz+) elapsed)
                         bytes-a-frame (round bytes frames)
                         new-text t))
-                (setf frames 0 bytes 0 since (timer-count))))))))
+                (setf frames 0 bytes 0 since (timer-count)))))))))
     (format t "~&dirty: ~D sprites, ~:D bytes a frame to video memory with ~A, ~
                ~D frames a second.~%"
             count bytes-a-frame (if dirty "dirty rectangles" "whole-screen copies")

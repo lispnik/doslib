@@ -49,7 +49,7 @@ outside an evaluation stops the command that is running, as C-g would if it
 could be typed, and the editor carries on.  (Inside an evaluation the hook is
 EDITOR-DEBUGGER, which shows the interrupted code's restarts.)"
   (declare (ignore hook))
-  (when (typep condition 'sb-sys:interactive-interrupt)
+  (when (typep condition 'interrupt-condition)
     (signal 'quit-command)              ; RUN-COMMAND takes it, if a command is running
     (let ((carry-on (find-restart 'continue condition)))
       (when carry-on (invoke-restart carry-on)))))
@@ -72,7 +72,7 @@ EDITOR-DEBUGGER, which shows the interrupted code's restarts.)"
     (error (e) (message "Error in EMACSRC.LSP: ~A" e)))
   (when file (visit (namestring file)))
   ;; C-c is a key here, and must not be DOS's signal to end the program
-  (let ((sb-ext:*invoke-debugger-hook* #'editor-interrupted))
+  (let ((#+sbcl sb-ext:*invoke-debugger-hook* #+clisp *debugger-hook* #'editor-interrupted))
     (without-break-checking
      (catch 'exit-editor
        (loop
@@ -85,12 +85,8 @@ EDITOR-DEBUGGER, which shows the interrupted code's restarts.)"
   (when *leave-display* (funcall *leave-display*))
   (text-mode)
   (values))
-(push (lambda (file) (emacs file) t) sb-ext:*ed-functions*)     ; (ed "file") comes here
+#+sbcl (push (lambda (file) (emacs file) t) sb-ext:*ed-functions*)     ; (ed "file") comes here
 (defun build-emacs (&optional (name "emacs.exe"))
   "Save the editor as a stand-alone program: EMACS [file]."
   (setf *buffers* '() *windows* '() *kill-ring* '())     ; start clean
-  (save-lisp-and-die name :executable t
-                          :toplevel (lambda ()
-                                      (doslib-init)
-                                      (emacs (second sb-ext:*posix-argv*))
-                                      (sb-ext:exit))))
+  (save-program name (lambda () (doslib-init) (emacs (command-line-file)))))

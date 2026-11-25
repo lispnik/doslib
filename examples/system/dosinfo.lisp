@@ -3,7 +3,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.dosinfo
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.dosinfo)
 
@@ -45,7 +45,7 @@
                              (floor (* cluster (word16 dx)) 1024)
                              (floor (* cluster (word16 bx)) 1024) cluster))))))
   (format t "COMSPEC         ~A~%PATH            ~A~%"
-          (posix-getenv "COMSPEC") (posix-getenv "PATH")))
+          (environment-variable "COMSPEC") (environment-variable "PATH")))
 
 (defun main ()
   "Asking DOS directly with INT 21h, bypassing the C library."

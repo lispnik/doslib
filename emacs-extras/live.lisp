@@ -28,7 +28,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-live
-  (:use #:cl #:doslib #:sb-sys)
+  (:use #:cl #:doslib #+sbcl #:sb-sys #:doslib-compat)
   (:export #:clear #:dot #:line #:disc #:box))
 (in-package #:doslib-live)
 
@@ -79,10 +79,7 @@
 (defun show ()                          ; the finished frame, onto the VGA
   (let ((canvas *canvas*) (vga *vga*))
     (declare (type canvas canvas) (optimize speed))
-    (with-pinned-objects (canvas)
-      (let ((from (vector-sap canvas)))
-        (dotimes (i 16000)
-          (setf (sap-ref-32 vga (* 4 i)) (sap-ref-32 from (* 4 i))))))))
+    (copy-vector-to-memory canvas 0 vga 0 64000)))
 
 (in-package #:doslib-emacs)
 

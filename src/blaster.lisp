@@ -33,7 +33,7 @@
 (defvar *blaster-dma16* 5
   "A Sound Blaster 16's DMA channel for 16-bit sound: BLASTER-SETTINGS sets it.")
 
-(defun blaster-settings (&optional (text (sb-ext:posix-getenv "BLASTER")))
+(defun blaster-settings (&optional (text (environment-variable "BLASTER")))
   "Take the card's port, interrupt and DMA channels from TEXT, which is the
 BLASTER environment variable unless given: \"A220 I5 D1 H5\" is port 220h,
 interrupt 5, and DMA channels 1 (8 bits) and 5 (16 bits).  What it does not

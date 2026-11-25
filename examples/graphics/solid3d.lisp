@@ -63,7 +63,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.solid3d
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.solid3d)
 
@@ -448,7 +448,7 @@ number of pixels filled and the number of faces drawn."
          (status (status-line solid textured 0 0)) (vga *vga*))
     (with-video-mode (#x13)
       (flat-palette)
-      (with-pinned-objects (buffer)     ; it must stay where it is while its address is in use
+      (progn
         (loop
           (when (key-pressed-p)
             (case (get-key)
@@ -461,9 +461,9 @@ number of pixels filled and the number of faces drawn."
           (setf (values pixels faces)
                 (draw-solid scene solid (logand (* 5 frame) 1023) (logand (* 3 frame) 1023)
                             textured))
-          (draw-glyphs (vector-sap buffer) 0 +width+ status +white+ 0)
+          (with-vector-memory (memory buffer) (draw-glyphs memory 0 +width+ status +white+ 0))
           (wait-frame)
-          (sb-kernel:system-area-ub8-copy (vector-sap buffer) 0 vga 0 +screen-bytes+)
+          (copy-vector-to-memory buffer 0 vga 0 +screen-bytes+)
           (incf frame) (incf frames)
           (let ((elapsed (- (timer-count) since)))
             (when (or (>= elapsed +timer-hz+) (< elapsed 0))         ; a second (or midnight)

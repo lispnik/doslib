@@ -32,7 +32,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.blit
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.blit)
 
@@ -100,6 +100,7 @@ it is empty)."
 ;;; few registers for WIDTH and GAP, so they may stay on the stack, or (the
 ;;; IMMEDIATE storage class) be numbers written into the instructions.  A Lisp
 ;;; loop over AREF and SAP-REF-8 does the same at half the speed.
+#+sbcl
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (sb-c:defknown blit-block (system-area-pointer system-area-pointer
                              (unsigned-byte 32) (unsigned-byte 32) (unsigned-byte 32))
@@ -153,9 +154,20 @@ clipped: the sprite must be wholly inside the picture.)"
   (declare (type system-area-pointer dest) (type bytes sprite) (type (unsigned-byte 16) x y)
            (optimize speed (safety 0)))
   ;; the sprite must stay where it is while its address is in use
+  #+sbcl
   (with-pinned-objects (sprite)
     (blit-block (vector-sap sprite) (sap+ dest (+ x (* +width+ y)))
                 +size+ +size+ (- +width+ +size+)))
+  ;; CLISP's compiler makes byte code and takes no new instructions: there
+  ;; the block is copied by a loop in Lisp
+  #+clisp
+  (let ((at (+ x (* +width+ y))) (i 0))
+    (dotimes (row +size+)
+      (dotimes (column +size+)
+        (let ((colour (aref sprite i)))
+          (unless (zerop colour) (setf (sap-ref-8 dest (+ at column)) colour)))
+        (incf i))
+      (incf at +width+)))
   (values))
 
 ;;; ---- the sprites: where each is, and which way it is going
@@ -185,7 +197,7 @@ clipped: the sprite must be wholly inside the picture.)"
 (defun draw-frame (dest background sprite flock status)
   "The whole picture, from nothing, at DEST."
   (declare (type system-area-pointer dest) (type bytes background))
-  (sb-kernel:system-area-ub8-copy (vector-sap background) 0 dest 0 +screen-bytes+)
+  (copy-vector-to-memory background 0 dest 0 +screen-bytes+)
   (dotimes (i +sprites+)
     (blit dest sprite (aref (flock-x flock) i) (aref (flock-y flock) i)))
   (draw-glyphs dest 0 +width+ status 15))        ; the top line, on a black bar
@@ -204,7 +216,7 @@ clipped: the sprite must be wholly inside the picture.)"
       (background-palette)
       (let ((status (status-line buffered frames-a-second)))
         ;; the vectors must stay where they are while their addresses are in use
-        (with-pinned-objects (background buffer)
+        (with-vector-memory (buffer buffer :write-back nil)
           (loop
             (when (key-pressed-p)
               (case (get-key)
@@ -213,9 +225,9 @@ clipped: the sprite must be wholly inside the picture.)"
                                status (status-line buffered frames-a-second)))))
             (move-flock flock)
             (cond (buffered         ; make the picture out of sight, then show it all at once
-                   (draw-frame (vector-sap buffer) background sprite flock status)
+                   (draw-frame buffer background sprite flock status)
                    (wait-frame t)
-                   (sb-kernel:system-area-ub8-copy (vector-sap buffer) 0 vga 0 +screen-bytes+))
+                   (copy-memory buffer 0 vga 0 +screen-bytes+))
                   (t                ; make it where the beam is looking
                    (wait-frame)
                    (draw-frame vga background sprite flock status)))

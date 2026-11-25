@@ -5,11 +5,11 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.bench
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.bench)
 
-(declaim (sb-ext:muffle-conditions sb-ext:compiler-note))
+#+sbcl (declaim (sb-ext:muffle-conditions sb-ext:compiler-note))
 (defun fib (n) (declare (fixnum n)) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))
 (defun sieve (n)
   (let ((flags (make-array (1+ n) :element-type 'bit :initial-element 1)) (count 0))
@@ -64,7 +64,7 @@
   (bench "hash 20000 words" (lambda () (hash-words 20000)))
   (bench "sort 50000 conses" (lambda () (cons-and-sort 50000)))
   (bench "CLOS dispatch" (lambda () (clos-dispatch 100000)))
-  (bench "full GC" (lambda () (gc :full t) :done)))
+  (bench "full GC" (lambda () (collect-garbage) :done)))
 
 (doslib-examples:define-example "bench" 'main
   :category :lisp

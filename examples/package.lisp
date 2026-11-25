@@ -49,8 +49,9 @@ speaker is silenced, and RUN returns."
 (defun command-line-arguments ()
   "What follows --end-toplevel-options on the command line.  (SBCL takes its
 own options out of *POSIX-ARGV*, that one included, when it has read them.)"
-  (let ((marked (member "--end-toplevel-options" sb-ext:*posix-argv* :test #'string=)))
-    (rest (or marked sb-ext:*posix-argv*))))
+  #+sbcl (let ((marked (member "--end-toplevel-options" sb-ext:*posix-argv* :test #'string=)))
+           (rest (or marked sb-ext:*posix-argv*)))
+  #+clisp ext:*args*)
 
 (defun run-arguments (&optional (arguments (command-line-arguments)))
   "Run the example named by the first of ARGUMENTS, passing it the rest: by
@@ -114,19 +115,23 @@ whole number is passed as a number, anything else as a string."
 
 (defun data-file (name)
   "The native name of a file in the examples' data directory."
-  (sb-ext:native-namestring
+  (#+sbcl sb-ext:native-namestring #+clisp namestring
    (asdf:system-relative-pathname "doslib/examples" (concatenate 'string "examples/data/" name))))
 
 (defun build-executable (name file)
   "Save the example NAME as a stand-alone program in FILE.  This ends the Lisp session."
   (let ((function (example-function (find-example name))))
-    (sb-ext:save-lisp-and-die file :executable t
-                                   :toplevel (lambda () (funcall function) (sb-ext:exit)))))
+    #+sbcl (sb-ext:save-lisp-and-die file :executable t
+                                          :toplevel (lambda () (funcall function) (sb-ext:exit)))
+    ;; a memory image, for LISP.EXE -M file
+    #+clisp (ext:saveinitmem file :quiet t :norc t :script nil
+                                  :init-function (lambda () (funcall function) (ext:exit)))))
 
 (defun save-core (&optional (file "doslib.cor"))
   "Save a core with the examples already loaded, so that they start quickly:
 sbcl --core doslib.cor.  This ends the Lisp session."
   ;; (a core saved by "sbcl --non-interactive" would otherwise remember that
   ;; errors are to end the session, not open the debugger)
-  (sb-ext:enable-debugger)
-  (sb-ext:save-lisp-and-die file))
+  #+sbcl (sb-ext:enable-debugger)
+  #+sbcl (sb-ext:save-lisp-and-die file)
+  #+clisp (ext:saveinitmem file))

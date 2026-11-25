@@ -7,7 +7,7 @@
 ;;;; Part of DOSLIB: Common Lisp on DOS with SBCL.
 
 (defpackage #:doslib-examples.shell
-  (:use #:cl #:sb-alien #:sb-ext #:sb-sys #:doslib)
+  (:use #:cl #+sbcl #:sb-alien #+sbcl #:sb-ext #+sbcl #:sb-sys #:doslib-compat #:doslib)
   (:export #:main))
 (in-package #:doslib-examples.shell)
 
@@ -15,7 +15,7 @@
 (defun name (e) (entry-name e))
 (defun size (e) (entry-size e))
 (defun cwd ()                           ; "D:\SBCL", or "D:\" at a root
-  (let ((d (sb-unix:posix-getcwd)))
+  (let ((d (string-right-trim "\\" (current-directory-string))))
     (if (= (length d) 2) (concatenate 'string d "\\") d)))
 (defun match-p (pattern string)         ; DOS wildcards: * and ?
   (cond ((string= pattern "") (string= string ""))
@@ -28,22 +28,11 @@
 (defun files (&optional (pattern "*"))
   "The current directory's entries matching PATTERN, as a list of ENTRY objects."
   (when (string= pattern "*.*") (setf pattern "*"))
-  (let ((result '()))
-    (sb-impl::map-directory
-     (lambda (path)
-       (let* ((directory (null (pathname-name path)))
-              (name (if directory
-                        (car (last (pathname-directory path)))
-                        (file-namestring path))))
-         (when (match-p pattern name)
-           (push (make-entry :name name :directory directory
-                             :time (or (ignore-errors (file-write-date path)) 0)
-                             :size (if directory 0
-                                       (with-open-file (in path :element-type '(unsigned-byte 8))
-                                         (file-length in))))
-                 result))))
-     (concatenate 'string (string-right-trim "\\" (cwd)) "\\"))
-    (sort result #'string-lessp :key #'entry-name)))
+  (sort (loop for (name directory size time)
+                  in (list-directory (concatenate 'string (string-right-trim "\\" (cwd)) "\\"))
+              when (match-p pattern name)
+                collect (make-entry :name name :directory directory :time time :size size))
+        #'string-lessp :key #'entry-name))
 (defun free-bytes ()
   (multiple-value-bind (ax bx cx) (int86 #x21 :ax #x3600 :dx 0)
     (* (word16 ax) (word16 bx) (word16 cx))))
@@ -102,10 +91,10 @@
   (values))
 (defcommand mem () "memory"
   (let ((info (alien-sap (make-alien (unsigned 8) 48))))
-    (int86 #x31 :ax #x0500 :di (sap-int info))
+    (int86 #x31 :ax #x0500 :di (near-address (sap-int info)))
     (format t "~12:D KB physical memory free~%~12:D KB Lisp heap in use, of ~:D KB~%"
-            (* 4 (sap-ref-32 info #x14)) (floor (sb-kernel:dynamic-usage) 1024)
-            (floor (sb-ext:dynamic-space-size) 1024)))
+            (* 4 (sap-ref-32 info #x14)) (floor (heap-bytes-used) 1024)
+            (floor (heap-bytes-limit) 1024)))
   (values))
 (defcommand help () "this list"
   (dolist (c (reverse *commands*)) (format t "  ~(~6A~) ~A~%" (first c) (third c)))
