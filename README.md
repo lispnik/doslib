@@ -19,7 +19,8 @@ the code is written with (`sap-ref-8`, `int-sap`, `make-alien`,
 own way: the heap's size, saving a program, directories and files.
 `examples/sockets.lisp` (the package `doslib-sockets`) is
 `sb-bsd-sockets` on SBCL and as much of it as the examples use, made
-from CLISP's `SOCKET` package, on CLISP.
+from CLISP's `SOCKET` package, on CLISP; `examples/tls.lisp` adds
+[TLS](#tls) to it on both.
 
 Three things are different there, and the code is written so that it is
 right on both:
@@ -50,11 +51,12 @@ byte code, so what draws a pixel at a time is much slower.
 
 ## Systems
 
-`doslib.asd` defines four ASDF systems.
+`doslib.asd` defines five ASDF systems.
 
 | System | Directory | Package | What it is |
 |---|---|---|---|
 | `doslib` | `src/` | `doslib` | The library |
+| `doslib/sockets` | `examples/` | `doslib-sockets` | TCP sockets the same on SBCL and CLISP, and TLS over them |
 | `doslib/examples` | `examples/` | `doslib-examples`, plus one package per example | Example programs |
 | `doslib/emacs` | `emacs/` | `doslib-emacs`, `doslib-emacs-user` | The editor |
 | `doslib/emacs-extras` | `emacs-extras/` | `doslib-emacs` | More for the editor, built on the examples and the network |
@@ -66,6 +68,63 @@ load what you want:
 (push #p"D:/DOSLIB/" asdf:*central-registry*)
 (asdf:load-system :doslib/examples)
 ```
+
+## TLS
+
+`doslib/sockets` has TLS, the thing https is made of, for a Lisp that was
+built with Mbed TLS linked in (see [Building SBCL for DOS](#building-sbcl-for-dos);
+for CLISP, `dos/README` there). `(tls-available-p)` says whether it was.
+It is a client, for TLS 1.2 and 1.3.
+
+A socket and a configuration make a stream:
+
+```lisp
+(asdf:load-system :doslib/sockets)
+(use-package :doslib-sockets)
+
+(defvar *config* (make-tls-config :ca-file "D:/SBCL/CACERT.PEM"))
+
+(let ((socket (make-instance 'inet-socket :type :stream :protocol :tcp)))
+  (socket-connect socket (host-ent-address (get-host-by-name "example.com")) 443)
+  (with-open-stream (stream (make-tls-stream socket :hostname "example.com"
+                                                    :config *config*))
+    (format stream "GET / HTTP/1.0~C~CHost: example.com~C~C~C~C"
+            #\Return #\Newline #\Return #\Newline #\Return #\Newline)
+    (finish-output stream)
+    (read-line stream)))                ; "HTTP/1.1 200 OK"
+```
+
+- **`make-tls-config`** says what to insist on, once, for any number of
+  connections: `:verify` (default true: the server's certificate must be
+  vouched for by an authority, be for the host asked for, and be in
+  date), `:ca-file` (the authorities, in PEM form, such as
+  <https://curl.se/ca/cacert.pem>), `:min-version` and `:max-version`
+  (`:tls1.2`, `:tls1.3`). So a program that fetches things takes a
+  configuration from its caller, or makes one, and passes it on with each
+  socket; `*tls-config*` is the one used when none is given.
+- **`make-tls-stream`** does the handshake on a connected socket and
+  returns a stream of both bytes and Latin-1 characters: `read-line` for
+  the headers, `read-sequence` into a byte vector for the body. Closing it
+  ends the conversation and closes the socket. `tls-stream-info` tells
+  the protocol, the cipher suite and whose certificate it was.
+- **`open-tls-connection`** `host port` connects and does both.
+- A handshake that fails, or a certificate that is refused, is a
+  `tls-error`, which says why.
+
+With no `:ca-file`, the authorities are looked for in `*tls-ca-file*`, the
+file named by the environment variable `SSL_CERT_FILE`, and `CACERT.PEM`
+in the current directory. Reading them takes a second or two for each
+configuration, and the PC's date has to be about right, since
+certificates have dates.
+
+**Random numbers.** TLS is only as private as its random numbers, and DOS
+has none to give. They are made from the jitter between the processor's
+cycle counter and the timer chip, the clock, a random device (NOISE.SYS)
+if one is loaded, and a seed file if the environment variable `TLSSEED`
+names one. On a real PC that is a fair source. In an emulator it may not
+be: set `TLSSEED` there, and for anything that matters.
+
+`(doslib-examples:run "wget" "https://example.com/")` uses all this.
 
 ## The library
 
@@ -395,12 +454,15 @@ Then a directory of downloads, `sbcl-dos-tools`, beside the SBCL tree
 | `dl-freedos/lite/FD14LITE.img` | The FreeDOS 1.4 "LiteUSB" image | <https://www.freedos.org> |
 | `dl-watt32/src/` | Watt-32, the TCP/IP library (for sockets) | <https://github.com/gvanem/Watt-32> |
 | `dl-pktdrv/crynwr/` | The Crynwr packet drivers (for sockets, when running) | the Crynwr collection |
+| `dl-mbedtls/mbedtls-3.6.x/` | Optional: Mbed TLS, a 3.6 release unpacked (for TLS) | <https://github.com/Mbed-TLS/mbedtls/releases> |
+| `cacert.pem` | Optional: the certificate authorities (for TLS, when running) | <https://curl.se/ca/cacert.pem> |
 | `dl-quicklisp/quicklisp.lisp` | Optional | <https://beta.quicklisp.org/quicklisp.lisp> |
 
 ```sh
 git clone -b dos-port https://github.com/lispnik/sbcl sbcl-dos-experiment
 cd sbcl-dos-experiment
 sh tools-for-build/dos-watt32.sh          # the TCP/IP library; skip it to build without sockets
+sh tools-for-build/dos-mbedtls.sh         # TLS for the sockets; skip it to build without
 ./make-dos.sh                             # the runtime, then the core: src/runtime/sbcl.exe, output/sbcl.core
 ./make-dos-contrib.sh asdf sb-bsd-sockets sb-posix
 ```

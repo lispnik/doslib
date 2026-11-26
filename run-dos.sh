@@ -75,7 +75,10 @@
 #                   dl-freedos/lite/FD14LITE.img, the FreeDOS 1.4 "LiteUSB"
 #                   image, dl-pktdrv/crynwr, the Crynwr packet drivers, and
 #                   (optionally) dl-quicklisp/quicklisp.lisp from
-#                   https://beta.quicklisp.org/quicklisp.lisp;
+#                   https://beta.quicklisp.org/quicklisp.lisp, and
+#                   cacert.pem from https://curl.se/ca/cacert.pem, the
+#                   certificate authorities, for TLS (https) in an SBCL
+#                   built with it;
 #                   the machines' disks are kept in its vm/ directory
 #   SBCL_SRC        (default: sbcl-dos-experiment next to SBCL_DOS_TOOLS)
 #                   the SBCL source tree, built for DOS with make-dos.sh
@@ -144,7 +147,7 @@ make_boot() {
     # BUILD.BAT, when there is one, is an unattended job (see "build" below):
     # run it, remove it, switch off.
     printf '%s\r\n' '@echo off' 'SET DOSDIR=\FREEDOS' 'SET PATH=\FREEDOS\BIN;D:\SBCL' \
-        'SET HOME=D:\HOME' 'SET WATTCP.CFG=D:\SBCL' \
+        'SET HOME=D:\HOME' 'SET WATTCP.CFG=D:\SBCL' 'SET SSL_CERT_FILE=D:\SBCL\CACERT.PEM' \
         'LBACACHE BUF 40000 > NUL' \
         'SHSUCDX /D:SBCLCD01 /QQ > NUL' \
         'DOSLFN > NUL' 'D:' 'CD \SBCL' 'HDPMI32 -r > NUL' 'PCNTPK INT=0x60 > NUL' \
@@ -188,6 +191,8 @@ copy_files() {
     mcopy -m -o "$src"/obj/sbcl-home/contrib/* d:/SBCL/CONTRIB/
     mcopy -o "$tools/dl-pktdrv/crynwr/DRIVERS/CRYNWR/PCNTPK.COM" d:/SBCL/
     printf 'my_ip = dhcp\r\n' > "$vm/wattcp.cfg"; mcopy -o "$vm/wattcp.cfg" d:/SBCL/WATTCP.CFG
+    # For TLS (https), the certificate authorities to check servers against
+    [ -f "$tools/cacert.pem" ] && mcopy -o "$tools/cacert.pem" d:/SBCL/CACERT.PEM
     # The mouse driver: FreeDOS's CTMOUSE, from the package on its install image
     if command -v unzip > /dev/null && mcopy -n -o c:/packages/base/ctmouse.zip "$vm/ctmouse.zip" 2>/dev/null; then
         unzip -o -q -j "$vm/ctmouse.zip" BIN/CTMOUSE.EXE -d "$vm" && mcopy -o "$vm/CTMOUSE.EXE" d:/SBCL/

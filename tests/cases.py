@@ -290,6 +290,9 @@ def all_cases():
                 ('key', 'b'), ('see', 'The first page'),
                 args=lambda host: web(host) + '"', leave=('esc',)),
         example('ntp', ('wait', 20), internet=True),
+        # TLS, in a Lisp built with it and with the certificate authorities on the disk
+        text('wget-https', 'TLSv1.', '200 OK', 'bytes of body', example='wget',
+             args=lambda host: '"https://example.com/"', internet=True),
         example('browse-gopher', ('see', 'Floodgap', 90), example='browse', internet=True, leave=('esc',)),
 
         # ---- blitting, Mode X, the linear framebuffer, raster effects

@@ -39,13 +39,21 @@
                (:file "clipboard")
                (:file "init")))
 
-(defsystem "doslib/examples"
-  :description "Example programs for DOSLIB: graphics, system information, Lisp, networking."
+(defsystem "doslib/sockets"
+  :description "TCP sockets the same on SBCL and CLISP, and TLS over them (with Mbed TLS linked into the Lisp)."
   :version "0.2.0"
   :depends-on ("doslib" (:feature :sbcl "sb-bsd-sockets"))
   :pathname "examples"
+  :serial t
+  :components ((:file "sockets")
+               (:file "tls")))
+
+(defsystem "doslib/examples"
+  :description "Example programs for DOSLIB: graphics, system information, Lisp, networking."
+  :version "0.2.0"
+  :depends-on ("doslib" "doslib/sockets")
+  :pathname "examples"
   :components ((:file "package")
-               (:file "sockets")
                (:module "graphics"
                 :depends-on ("package")
                 :components ((:file "blit")
@@ -142,7 +150,7 @@
                              (:file "tune")
                              (:file "speaker" :depends-on ("adlib"))))
                (:module "network"
-                :depends-on ("package" "sockets")
+                :depends-on ("package")
                 :components ((:file "browse")
                              (:file "files")
                              (:file "irc")
